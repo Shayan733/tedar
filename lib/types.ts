@@ -106,3 +106,14 @@ export interface LLMResponse {
   text: string;
   tokensUsed?: number;
 }
+
+export interface VideoSnapshotData {
+  videoId: string;
+  scannedAt: string;
+  viewCount: number;
+  likeCount?: number;
+  commentCount?: number;
+  outlierScore?: number;
+  outlierCategory?: OutlierCategory;
+  channelAvgViewsAtScan?: number;
+}

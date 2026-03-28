@@ -2,7 +2,7 @@
 // All database operations go through this file. Never import supabase-js elsewhere.
 
 import { createClient } from '@supabase/supabase-js';
-import { NicheData, ChannelData, VideoData, PipelineRun } from './types';
+import { NicheData, ChannelData, VideoData, VideoSnapshotData, PipelineRun } from './types';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -51,6 +51,22 @@ export async function upsertChannel(channel: ChannelData): Promise<string> {
 
 // ── Videos ────────────────────────────────────────────────────────────────────
 
+export async function insertVideoSnapshot(snapshot: VideoSnapshotData): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('video_snapshots')
+    .insert({
+      video_id: snapshot.videoId,
+      scanned_at: snapshot.scannedAt,
+      view_count: snapshot.viewCount,
+      like_count: snapshot.likeCount,
+      comment_count: snapshot.commentCount,
+      outlier_score: snapshot.outlierScore,
+      outlier_category: snapshot.outlierCategory,
+      channel_avg_views_at_scan: snapshot.channelAvgViewsAtScan,
+    });
+  if (error) throw new Error(`Failed to insert video snapshot for ${snapshot.videoId}: ${error.message}`);
+}
+
 export async function upsertVideo(video: VideoData): Promise<string> {
   const { data, error } = await supabaseAdmin
     .from('videos')
@@ -75,7 +91,19 @@ export async function upsertVideo(video: VideoData): Promise<string> {
     .select('id')
     .single();
   if (error) throw new Error(`Failed to upsert video "${video.title}": ${error.message}`);
-  return data.id as string;
+
+  const videoId = data.id as string;
+  await insertVideoSnapshot({
+    videoId,
+    scannedAt: new Date().toISOString(),
+    viewCount: video.viewCount,
+    likeCount: video.likeCount,
+    commentCount: video.commentCount,
+    outlierScore: video.outlierScore,
+    outlierCategory: video.outlierCategory,
+  });
+
+  return videoId;
 }
 
 // ── Pipeline Runs ─────────────────────────────────────────────────────────────
