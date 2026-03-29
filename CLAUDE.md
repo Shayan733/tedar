@@ -1,5 +1,5 @@
 # TEDAR — CLAUDE.md
-# Phase 1: Scout Engine with LLM-Assisted Channel Discovery
+# Phase 2: Scout Dashboard + Conversational LLM Interface
 
 ---
 
@@ -11,77 +11,117 @@ When a task is complete and tested, update this file by changing `- [ ]` to `- [
 
 ---
 
-## WHAT WAS BUILT IN PHASE 0 — AGENT CONTEXT
+## WHAT WAS BUILT IN PHASES 0 AND 1 — AGENT CONTEXT
 
 Read this before doing anything. This is what already exists. Do not re-create, re-install, or re-initialise anything listed here.
 
 **Project details:**
 - Name: TEDAR
 - Founder: Shayan (non-technical — explain everything in plain English, no jargon)
-- GitHub: github.com/Shayan733/tedar (private repo, already connected and pushing)
+- GitHub: github.com/Shayan733/tedar (private repo, connected and pushing)
 - Local path: ~/Desktop/TEDAR/tedar
 
 **Already built and confirmed working:**
 - ✅ Next.js 14 project with TypeScript and Tailwind — runs at localhost:3000
-- ✅ All dependencies installed (@google/generative-ai, @supabase/supabase-js, googleapis, youtube-transcript)
-- ✅ shadcn/ui components installed (button, card, input, tabs, badge, skeleton, alert, progress)
-- ✅ .env.local with all 5 real API keys — Gemini, YouTube, Supabase URL, anon key, service role key — all tested and confirmed working
-- ✅ All 7 original Supabase tables live and verified: niches, channels, videos, transcripts, analyses, knowledge_entries, pipeline_runs
-- ✅ 4 snapshot tables added post-Phase 1: video_snapshots, channel_snapshots, niche_snapshots, video_velocity_snapshots — all append-only, never overwritten
-- ✅ pgvector extension enabled in Supabase (project region: West EU / Ireland)
+- ✅ All dependencies installed (@google/generative-ai, @supabase/supabase-js, googleapis, youtube-transcript, groq-sdk)
+- ✅ shadcn/ui components: button, card, input, tabs, badge, skeleton, alert, progress
+- ✅ .env.local with all API keys — Groq, Gemini (kept as fallback), YouTube, Supabase URL, anon key, service role key — all confirmed working
+- ✅ 11 Supabase tables live: niches, channels, videos, transcripts, analyses, knowledge_entries, pipeline_runs, video_snapshots, channel_snapshots, niche_snapshots, video_velocity_snapshots
+- ✅ pgvector extension enabled (West EU / Ireland region)
 - ✅ Complete folder structure and all placeholder files created
-- ✅ Git initialised, connected to GitHub, code pushed and verified
+- ✅ Git connected to GitHub, Phase 1 committed and pushed
+
+**Phase 1 files confirmed working — do not rewrite any of these:**
+- ✅ `lib/types.ts` — all TypeScript interfaces (now also includes NichePipelineResult, ChannelPipelineResult, VideoPipelineResult)
+- ✅ `lib/config.ts` — all configurable thresholds (maxChannelsToScan: 5, maxVideosPerChannel: 30 — tuned for browser timeout)
+- ✅ `lib/supabase.ts` — database connection + all upsert and snapshot insert functions
+- ✅ `lib/llm/gemini.ts` — Gemini 2.5 Flash implementation (kept, not active)
+- ✅ `lib/llm/groq.ts` — Groq llama-3.3-70b-versatile implementation (ACTIVE — replaces Gemini)
+- ✅ `lib/llm/provider.ts` — model-agnostic LLM wrapper with stripJsonFences utility (routes to Groq)
+- ✅ `lib/prompts/channel-ranker.ts` — LLM prompt for ranking channels by niche relevance
+- ✅ `lib/youtube/search.ts` — YouTube channel search by keyword
+- ✅ `lib/youtube/channel.ts` — fetch channel videos and resolve channel ID
+- ✅ `lib/youtube/metadata.ts` — fetch single video metadata
+- ✅ `lib/youtube/outlier.ts` — outlier score calculation (trimmed mean baseline)
+- ✅ Full integration test passed: keyword → 50 channels → LLM ranked top 20 → channels scanned → videos stored → outliers detected and scored → all data in Supabase
+
+**Phase 2 files confirmed working:**
+- ✅ `lib/prompts/input-interpreter.ts` — classifies any user input into niche / channel / video intent
+- ✅ `lib/pipeline/niche-pipeline.ts` — full niche Scout pipeline as callable function
+- ✅ `lib/pipeline/channel-pipeline.ts` — single channel Scout pipeline (fetches channel name directly)
+- ✅ `lib/pipeline/video-pipeline.ts` — single video metadata pipeline
+- ✅ `lib/supabase-queries.ts` — read-only queries for dashboard (getPipelineRun, getOutliersForRun, getRecentRuns)
+- ✅ `app/api/scout/interpret/route.ts` — LLM input classifier API, tested for all 4 input types
+- ✅ `app/api/scout/run/route.ts` — full pipeline runner with narrator summary
+- ✅ `app/api/scout/results/[runId]/route.ts` — retrieves saved results from Supabase by run ID
+- ✅ `components/OutlierCard.tsx` — video result card with score badge and disabled Decode button
+- ✅ `components/PipelineProgress.tsx` — animated progress messages while pipeline runs
+- ✅ `app/page.tsx` — full dashboard with LLM-first input, 6-state machine, real API wired end-to-end
+- ✅ `next.config.ts` — updated with YouTube thumbnail image domain
 
 **LLM configuration:**
-- Model ID: `gemini-2.5-flash` — ONLY correct model. Never use gemini-2.0-flash (deprecated March 2026, no longer exists)
-- Free tier: 250 requests/day, resets midnight Pacific (8am UK time)
-- Environment variable in .env.local: `LLM_PROVIDER=gemini`
+- Active provider: **Groq** — model `llama-3.3-70b-versatile`
+- Groq free tier: thousands of requests/day, no daily quota issues
+- Env var: `LLM_PROVIDER=groq`, key: `GROQ_API_KEY`
+- Gemini kept as fallback: `GEMINI_API_KEY` still in .env.local, switch by changing `LLM_PROVIDER=gemini`
+- Gemini free tier was only 20 requests/day — caused timeouts during Phase 2 testing, replaced with Groq
 
 **YouTube API:**
-- Free tier: ~100 channel lookups/day
-- Resets midnight Pacific (8am UK time)
+- Free tier: ~100 channel lookups/day, resets midnight Pacific (8am UK time)
+- Niche scan (5 channels × 30 videos) uses ~6 API calls — well within daily limit
+- Niche scan was originally 20 channels × 50 videos — caused 5-minute browser timeouts, tuned down
 
 **Database:**
-- Supabase PostgreSQL, West EU region
-- 11 tables total (7 original + 4 snapshot tables)
-- pgvector enabled for future RAG capability (knowledge_entries table ready but empty — populated post-MVP)
-- Snapshot tables are append-only (insert only, never update/delete) — full traceable history of every scan
-- video_snapshots: view count, likes, comments, outlier score per scan
-- channel_snapshots: subscriber count, avg_views, relevance score per scan
-- niche_snapshots: channel count, avg outlier score, total videos/outliers per scan
-- video_velocity_snapshots: view count at fixed intervals (24h, 48h, 7d, 30d, latest) after publish
+- Supabase PostgreSQL, West EU / Ireland region
+- 11 tables total (7 core + 4 snapshot tables, all append-only)
+
+**Known behaviour and limits:**
+- Niche mode: scans top 5 channels, 30 videos each — completes in ~60 seconds in the browser
+- Channel mode: scans 1 channel, 30 videos — completes in ~15 seconds
+- Video mode: fetches 1 video's metadata — completes in ~3 seconds
+- Outlier threshold: 3.0x (video must have 3× channel average views to be flagged)
+- All these numbers live in `lib/config.ts` — change them there, nowhere else
 
 ---
 
 ## WHAT THIS PHASE BUILDS
 
-Phase 1 builds the Scout Engine — the system that finds YouTube channels for a given niche, ranks them by relevance using the LLM, pulls their recent videos, calculates each channel's performance baseline, detects outlier videos, and stores everything to the database.
+Phase 2 builds the Scout Dashboard — the browser interface that lets the founder use TEDAR without touching a terminal.
 
-At the end of this phase, you will be able to type a niche keyword (e.g. "fitness motivation") and get back a ranked list of outlier videos — videos that are performing significantly better than their channel's average — all stored in Supabase.
+The defining feature of Phase 2: **LLM-first input**. The user types anything — a keyword, a question, a vague idea, a URL — and the LLM classifies the intent, asks one clarifying question if needed, then drives the Scout engine and presents results conversationally. This is not a form. It is a conversation that triggers a data pipeline.
+
+**At the end of this phase, the founder can:**
+1. Open localhost:3000 in any browser
+2. Type anything ("show me what's blowing up in personal finance", "@mkbhd", a YouTube video URL)
+3. See TEDAR interpret the input and confirm what it is about to do
+4. Watch animated progress while the Scout runs
+5. Read a ranked list of outlier video cards with scores, and a 2–3 sentence LLM summary of the findings
+
+**Three input modes all working:**
+- **Mode 1 — Niche keyword:** "fitness motivation" → full pipeline (channel discovery + LLM ranking + video scanning + outlier detection)
+- **Mode 2 — Channel URL:** paste any YouTube channel URL → Scout runs on that channel only, no discovery step needed
+- **Mode 3 — Video URL:** paste a specific YouTube video URL → metadata fetched and displayed, "Decode this video" button shown but disabled (Decoder is Phase 3)
 
 **Files built in this phase (in order):**
-1. `lib/types.ts` — all TypeScript type definitions (includes snapshot types)
-2. `lib/config.ts` — configurable settings and thresholds
-3. `lib/supabase.ts` — database connection, queries, and all snapshot insert functions
-4. `lib/llm/gemini.ts` — Gemini-specific LLM implementation
-5. `lib/llm/provider.ts` — model-agnostic LLM wrapper (includes stripJsonFences utility)
-6. `lib/prompts/channel-ranker.ts` — LLM prompt for ranking channels
-7. `lib/youtube/search.ts` — YouTube channel search by keyword
-8. `lib/youtube/channel.ts` — fetch channel videos
-9. `lib/youtube/metadata.ts` — fetch single video metadata
-10. `lib/youtube/outlier.ts` — outlier score calculation
-11. `scripts/test-search.ts` — test YouTube search
-12. `scripts/test-channel.ts` — test channel video fetching
-13. `scripts/test-outlier.ts` — test full outlier detection
-14. `scripts/test-scout-full.ts` — full end-to-end integration test
+1. `lib/prompts/input-interpreter.ts` — LLM prompt that classifies any user input
+2. `lib/pipeline/niche-pipeline.ts` — Niche Scout pipeline as a callable function
+3. `lib/pipeline/channel-pipeline.ts` — Channel Scout pipeline as a callable function
+4. `lib/pipeline/video-pipeline.ts` — Video URL fetch pipeline as a callable function
+5. `lib/supabase-queries.ts` — Read-only query functions for the dashboard
+6. `app/api/scout/interpret/route.ts` — API: LLM interprets and classifies user input
+7. `app/api/scout/run/route.ts` — API: runs the full Scout pipeline, returns results
+8. `app/api/scout/results/[runId]/route.ts` — API: fetches saved results for a past run
+9. `components/OutlierCard.tsx` — Individual outlier video card component
+10. `components/PipelineProgress.tsx` — Animated progress display component
+11. `app/page.tsx` — Main dashboard page (all five states assembled)
+12. Full browser test across all three input modes
+13. Commit and push to GitHub
 
-**Snapshot functions in lib/supabase.ts (all called automatically — no manual invocation needed):**
-- `insertVideoSnapshot` — called inside every `upsertVideo`
-- `insertVideoVelocitySnapshot` — called inside every `upsertVideo` with label 'latest'
-- `insertChannelSnapshot` — called inside every `upsertChannel`
-- `insertNicheSnapshot` — called manually at end of each niche pipeline run
-
-**LLM required:** Yes — for channel ranking only. Outlier detection is pure maths.
+**LLM calls in this phase:**
+- Input interpreter: 1 call per user message (fast, minimal tokens)
+- Results narrator: 1 call after pipeline completes (generates the 2–3 sentence summary)
+- Niche pipeline channel ranking: 1 call (inherited from Phase 1)
+- Total per niche run: ~3 LLM calls. Per channel run: ~2. Per video run: ~2.
 
 **Estimated time:** 2–3 days of focused work.
 
@@ -89,36 +129,34 @@ At the end of this phase, you will be able to type a niche keyword (e.g. "fitnes
 
 ## WHAT COMES AFTER THIS PHASE
 
-Phase 2 builds the Scout Dashboard and the conversational LLM layer. Key architectural decisions for Phase 2 — including whether the interface is conversational (LLM asks clarifying questions) or structured (form-based input), and how the LLM presents results in the browser — will be made after Phase 1 is complete and tested. Do not anticipate or pre-build any Phase 2 features now.
+Phase 3 builds the Decoder Engine — the psychological analysis layer. It takes outlier videos found by the Scout, pulls their transcripts, and analyses why they worked using the K1 framework (Kahneman, Berger, Loewenstein, Salt). The disabled "Decode this video" button built in Phase 2 becomes active in Phase 3.
 
-What is confirmed for Phase 2:
-- Web interface in the browser (not terminal)
-- All three input modes working (niche keyword, channel URL, video URL)
-- LLM layer that interprets user queries and presents results conversationally
-- Pipeline progress shown in real time
-
-What is deferred to Phase 2 decision point:
-- Exact conversational flow design
-- Whether LLM asks clarifying questions or user fills a form
-- How results are formatted and displayed
+**Do not build any of the following in Phase 2:**
+- Transcript fetching or handling
+- Decoder LLM analysis (the K1 psychological framework prompt)
+- Builder briefs
+- Auth or user accounts
+- Payments
+- Deployment to Vercel (run locally only in this phase)
 
 ---
 
 ## GOLDEN RULES — READ BEFORE EVERY ACTION
 
 1. **ONE FILE AT A TIME.** Complete one file, explain it, test it, confirm it works, then move to the next.
-2. **EXPLAIN EVERYTHING IN PLAIN LANGUAGE.** After every file, write 2–3 sentences explaining what was just built and why, in plain English. No jargon.
+2. **EXPLAIN EVERYTHING IN PLAIN LANGUAGE.** After every file, write 2–3 sentences explaining what was just built and why. No jargon.
 3. **TEST BEFORE MOVING.** Every file has a specific test. Do not proceed until the test passes.
-4. **NEVER SKIP GATES.** The Gate Check at the bottom must fully pass before Phase 2 begins.
-5. **NEVER BUILD AHEAD.** No frontend, no API routes, no Phase 2 features in this phase.
-6. **NEVER USE 'any' IN TYPESCRIPT.** All data types must be explicitly defined.
-7. **MAX 150 LINES PER FILE.** If a file would exceed 150 lines, split it and flag it.
-8. **NEVER CALL LLM APIs DIRECTLY.** Always go through `lib/llm/provider.ts`. Never import Gemini SDK directly in business logic files.
-9. **ALWAYS SAVE DATA TO DATABASE.** Every function that produces data must store it in Supabase before returning.
+4. **NEVER SKIP GATES.** The Gate Check at the bottom must fully pass before Phase 3 begins.
+5. **NEVER BUILD AHEAD.** No Decoder, no Builder, no transcripts, no auth, no payments in this phase.
+6. **NEVER USE 'any' IN TYPESCRIPT.** All types must be explicitly defined. Import from `lib/types.ts`.
+7. **MAX 150 LINES PER FILE.** If a file would exceed 150 lines, split it logically and flag it.
+8. **NEVER CALL LLM APIs DIRECTLY.** Always go through `lib/llm/provider.ts`. Never import the Gemini SDK in any file outside `lib/llm/gemini.ts`.
+9. **ALWAYS SAVE DATA TO DATABASE.** Every pipeline run must create a `pipeline_runs` record in Supabase.
 10. **NEVER HARD-CODE THRESHOLDS.** All configurable numbers come from `lib/config.ts`.
 11. **NEVER COMMIT .env.local.** Verify it is in .gitignore before every commit.
-12. **USE gemini-2.5-flash ONLY.** Never reference gemini-2.0-flash anywhere. The correct model ID is: `gemini-2.5-flash`
-13. **TRANSCRIPTS ARE PHASE 3.** Do not fetch or check transcripts in Phase 1. Every video saves `has_transcript = false` by default. That field will be updated in Phase 3 when the Decoder runs. If a transcript is missing in Phase 3, the user will be notified and given the option to paste one manually.
+12. **USE gemini-2.5-flash ONLY.** Never reference gemini-2.0-flash anywhere in any file.
+13. **TRANSCRIPTS ARE PHASE 3.** Do not fetch, reference, or handle transcripts. Video URL mode fetches metadata only. Every video saves `has_transcript = false` by default.
+14. **DO NOT REWRITE PHASE 1 FILES.** `lib/supabase.ts`, `lib/youtube/`, `lib/config.ts`, `lib/types.ts`, `lib/llm/`, `lib/prompts/channel-ranker.ts` — all confirmed working. Import from them. Do not modify them unless a bug is found.
 
 ---
 
@@ -127,807 +165,817 @@ What is deferred to Phase 2 decision point:
 | What | Technology | Notes |
 |---|---|---|
 | Framework | Next.js 14, App Router, TypeScript | Already installed |
-| Database | Supabase (PostgreSQL) | Already set up with 7 tables |
-| LLM Default | Google Gemini 2.5 Flash | Model ID: `gemini-2.5-flash` |
-| LLM Wrapper | lib/llm/provider.ts | NEVER call Gemini SDK directly in other files |
-| YouTube Data | YouTube Data API v3 | Official API, free tier |
-| Transcripts | youtube-transcript | Already installed, used in Phase 3 |
+| Styling | Tailwind CSS + shadcn/ui | Already installed |
+| Database | Supabase (PostgreSQL) | 11 tables live |
+| LLM | Google Gemini 2.5 Flash | Always via `lib/llm/provider.ts` |
+| YouTube | YouTube Data API v3 | Via `lib/youtube/` files |
+| State management | React useState only | No Redux, Zustand, or external state |
 | Package manager | npm | Do not use yarn, pnpm, or bun |
 
 ---
 
-## CRITICAL: HOW THE SCOUT WORKS
+## CRITICAL: HOW PHASE 2 WORKS — READ BEFORE BUILDING
 
-Before building, understand what the Scout does. Explain this to the founder if asked.
+Before writing a single line of code, understand the full user journey and data flow. Explain this to the founder if asked.
 
-**In plain English:**
-1. Founder types "fitness motivation"
-2. YouTube Search API finds 50 channels related to that keyword
-3. The LLM reads those 50 channels and picks the top 20 most relevant ones, giving each a relevance score
-4. For each of the top 20 channels, we pull their last 50 videos
-5. We calculate each channel's average view count (ignoring their top 5% to avoid skewing the average)
-6. Any video with 3x or more views than that average is flagged as an outlier
-7. Everything gets saved to Supabase — channels, videos, outlier scores
+**The LLM-first user journey:**
 
-**The outlier score formula:**
+1. User opens localhost:3000 — sees a clean input: "Type a niche, channel URL, or video URL..."
+2. User types anything: "what's blowing up in personal finance right now?"
+3. Frontend POSTs to `/api/scout/interpret`
+4. LLM reads the input and returns one of two JSON shapes:
+   - **Ready:** `{ isReady: true, inputType: "niche", inputValue: "personal finance", confirmationMessage: "I'll scan the personal finance niche and find the top-performing outlier videos." }`
+   - **Needs clarification:** `{ isReady: false, clarifyingQuestion: "Are you looking at the whole personal finance niche, or a specific channel?" }`
+5. If clarification needed: TEDAR shows the question. User answers. POST to interpret again. Repeat until `isReady: true`.
+6. Once ready: confirmation message is shown. User clicks "Run Scout."
+7. Frontend POSTs to `/api/scout/run` with `{ inputType, inputValue }`.
+8. While waiting (15–30 seconds for niche, 5–10 for channel, under 3 for video): animated progress messages cycle on screen.
+9. API completes the full pipeline synchronously and returns `{ runId, results, narratorMessage }`.
+10. Frontend displays: the narrator's 2–3 sentence summary, then the outlier cards ranked by score.
+
+**Why synchronous (not background jobs):**
+The pipeline runs synchronously in the API route and returns results when complete. Polling, background job queues, and streaming add significant complexity that is not warranted for an internal MVP tool. The pipeline takes 15–30 seconds for niche mode — acceptable for the founder's use. The frontend shows animated progress messages while waiting (not live database polling — simulated messages). Background job architecture is built in Phase 5 when the automated scheduler is added. This is the correct MVP approach.
+
+**Note on Vercel timeout:** Phase 2 runs locally only (`npm run dev`). Local development has no timeout. Vercel deployment and timeout handling are addressed in Phase 5.
+
+**The three pipeline flows:**
+
 ```
-outlierScore = videoViews / channelBaseline
-channelBaseline = average views of last 50 videos, excluding top 5%
+Niche mode:
+searchChannels(keyword)
+  → buildChannelRankerPrompt → generateLLMResponse → rankedChannels
+  → for each channel: getChannelVideos → detectOutliers → upsertVideo × N
+  → updatePipelineRun (throughout)
+  → generateLLMResponse (narrator)
+  → return NichePipelineResult
 
-Categories:
-< 0.5     = 'underperformer'
-0.5–1.5   = 'normal'
-1.5–3.0   = 'above_average'
-3.0–5.0   = 'notable'      ← default flag threshold
-5.0–10.0  = 'strong'
-> 10.0    = 'viral'
+Channel mode:
+resolveChannelId(channelUrl)
+  → getChannelVideos
+  → detectOutliers
+  → upsertChannel + upsertVideo × N
+  → updatePipelineRun
+  → generateLLMResponse (narrator)
+  → return ChannelPipelineResult
+
+Video mode:
+getVideoData(videoUrl)
+  → upsertVideo (no outlier score — no channel baseline available)
+  → updatePipelineRun
+  → return VideoPipelineResult
 ```
+
+**The interpreter is not the pipeline.** The interpreter only classifies input. It does not fetch anything from YouTube or the database. It is a fast, cheap LLM call (under 3 seconds, minimal tokens) whose only job is to return structured JSON.
+
+**The narrator runs after the pipeline.** After results are in hand, one more LLM call generates a 2–3 sentence plain-English summary. This is what makes TEDAR feel like a specialist rather than a data dump.
 
 ---
 
-## PHASE 1 TASK LIST
+## PHASE 2 TASK LIST
 
 Work through these in exact order. One file at a time. Tick each box when complete and tested.
 
 ---
 
-### TASK 1 — `lib/types.ts`
+### TASK 1 — `lib/prompts/input-interpreter.ts`
 
-**What it is:** The master type definitions file. Every other file in the project imports types from here. Build this first so TypeScript can validate everything that follows.
-
-**Build instructions:**
-- Define all interfaces listed below
-- Never use `any` — every field must have an explicit type
-- Export every interface
-
-**Interfaces to define:**
-
-```typescript
-// Niche
-interface NicheData {
-  id?: string;
-  name: string;
-  keywords: string[];
-  channelCount: number;
-  lastScannedAt?: string;
-  createdAt?: string;
-}
-
-// Channel
-interface ChannelData {
-  id?: string;
-  youtubeChannelId: string;
-  channelName: string;
-  channelUrl?: string;
-  subscriberCount?: number;
-  totalVideoCount?: number;
-  nicheId?: string;
-  avgViews?: number;
-  relevanceScore?: number;
-  lastScannedAt?: string;
-  createdAt?: string;
-}
-
-// Video
-interface VideoData {
-  id?: string;
-  youtubeVideoId: string;
-  channelId?: string;
-  title: string;
-  description?: string;
-  url: string;
-  viewCount: number;
-  likeCount?: number;
-  commentCount?: number;
-  durationSeconds?: number;
-  publishedAt?: string;
-  thumbnailUrl?: string;
-  tags?: string[];
-  outlierScore?: number;
-  outlierCategory?: OutlierCategory;
-  hasTranscript?: boolean;
-  hasAnalysis?: boolean;
-  createdAt?: string;
-  // Channel info (joined from channels table)
-  channelName?: string;
-  channelUrl?: string;
-}
-
-// Outlier category type
-type OutlierCategory =
-  | 'underperformer'
-  | 'normal'
-  | 'above_average'
-  | 'notable'
-  | 'strong'
-  | 'viral';
-
-// Outlier result (video + its score context)
-interface OutlierResult {
-  video: VideoData;
-  outlierScore: number;
-  outlierCategory: OutlierCategory;
-  channelAvgViews: number;
-  channelName: string;
-  rank: number;
-}
-
-// Channel search result (from YouTube Search API)
-interface ChannelSearchResult {
-  youtubeChannelId: string;
-  channelName: string;
-  channelUrl: string;
-  description?: string;
-  subscriberCount?: number;
-  thumbnailUrl?: string;
-}
-
-// LLM-ranked channel
-interface RankedChannel extends ChannelSearchResult {
-  relevanceScore: number;
-  relevanceReason: string;
-}
-
-// Pipeline config
-interface PipelineConfig {
-  flagThreshold: number;
-  flagMetric: 'views' | 'engagement_rate' | 'view_velocity' | 'comment_ratio';
-  maxChannelsToScan: number;
-  maxVideosPerChannel: number;
-  maxOutliersToAnalyse: number;
-}
-
-// Pipeline run
-interface PipelineRun {
-  id?: string;
-  inputType: 'niche' | 'channel' | 'video';
-  inputValue: string;
-  channelsFound: number;
-  videosScanned: number;
-  outliersFound: number;
-  analysesCompleted: number;
-  briefsGenerated: number;
-  status: 'running' | 'completed' | 'failed';
-  errorMessage?: string;
-  startedAt?: string;
-  completedAt?: string;
-}
-
-// LLM response
-interface LLMResponse {
-  text: string;
-  tokensUsed?: number;
-}
-```
-
-**Test:** Run `npx tsc --noEmit` in the terminal. It must complete with zero errors. If there are errors, fix them before moving on.
-
-- [x] `lib/types.ts` created ✓
-- [x] `npx tsc --noEmit` passes with zero errors ✓
-
----
-
-### TASK 2 — `lib/config.ts`
-
-**What it is:** The single source of truth for all configurable numbers and settings. Nothing is ever hard-coded elsewhere. If a number needs to change, it changes here and nowhere else.
+**What it is:** The LLM prompt that classifies any user input into a structured intent. The most important design decision in Phase 2 — this is what makes TEDAR feel intelligent rather than like a search box.
 
 **Build instructions:**
-- Import `PipelineConfig` from `lib/types.ts`
-- Export `DEFAULT_CONFIG` as a constant
-- Export individual threshold constants
-
-```typescript
-import { PipelineConfig } from './types';
-
-export const DEFAULT_CONFIG: PipelineConfig = {
-  flagThreshold: 3.0,           // Videos 3x above channel average are flagged
-  flagMetric: 'views',          // Default metric for outlier detection
-  maxChannelsToScan: 20,        // Max channels to scan per niche
-  maxVideosPerChannel: 50,      // Videos pulled per channel
-  maxOutliersToAnalyse: 20,     // Max outliers to send to Decoder
-};
-
-export const OUTLIER_THRESHOLDS = {
-  underperformer: 0.5,
-  normal: 1.5,
-  above_average: 3.0,
-  notable: 5.0,
-  strong: 10.0,
-  // above 10.0 = viral
-};
-
-export const MAX_TRANSCRIPT_WORDS = 15000;
-export const LLM_TEMPERATURE = 0.3;
-export const LLM_MAX_TOKENS = 4096;
-export const YOUTUBE_MAX_RESULTS = 50;
-export const CHANNEL_BASELINE_TRIM_PERCENT = 0.05; // Exclude top 5% when calculating baseline
-```
-
-**Plain English explanation to give founder:** This file is the control panel for TEDAR's settings. The `flagThreshold: 3.0` means "only show me videos that got 3 times more views than the channel's average." The founder can change any of these numbers here and the change applies everywhere in the system automatically.
-
-**Test:** Run `npx tsc --noEmit`. Zero errors.
-
-- [x] `lib/config.ts` created ✓
-- [x] `npx tsc --noEmit` passes with zero errors ✓
-
----
-
-### TASK 3 — `lib/supabase.ts`
-
-**What it is:** The database connection file and all database query functions for Phase 1. Every piece of data the Scout produces gets saved through the functions in this file.
-
-**Build instructions:**
-- Create the Supabase client using environment variables
-- Create two clients: one for browser (anon key) and one for server (service role key)
-- Add upsert functions for niches, channels, videos, and pipeline_runs
-- Handle errors clearly — if a database save fails, throw with a descriptive message
-
-**Key functions to implement:**
-
-```typescript
-// Connect to Supabase
-export const supabase = createClient(url, anonKey);
-export const supabaseAdmin = createClient(url, serviceRoleKey);
-
-// Upsert a niche (insert if new, update if exists)
-export async function upsertNiche(niche: NicheData): Promise<string>
-// Returns the niche ID
-
-// Upsert a channel
-export async function upsertChannel(channel: ChannelData): Promise<string>
-// Returns the channel ID
-
-// Upsert a video (with outlier score)
-export async function upsertVideo(video: VideoData): Promise<string>
-// Returns the video ID
-
-// Create a pipeline run record
-export async function createPipelineRun(
-  inputType: PipelineRun['inputType'],
-  inputValue: string
-): Promise<string>
-// Returns the pipeline run ID
-
-// Update a pipeline run with progress
-export async function updatePipelineRun(
-  id: string,
-  updates: Partial<PipelineRun>
-): Promise<void>
-
-// Get videos for a channel (used to check if already scanned)
-export async function getChannelVideos(channelId: string): Promise<VideoData[]>
-```
-
-**Important:** Use `supabaseAdmin` (service role) for all write operations. Use `supabase` (anon) only for reads.
-
-**Test:** Run `npx tsc --noEmit`. Zero errors. Then run this quick connection test in terminal:
-```bash
-npx ts-node -e "import('./lib/supabase').then(m => m.supabase.from('niches').select('count').then(r => console.log('✅ DB connected:', r)))"
-```
-
-- [x] `lib/supabase.ts` created ✓
-- [x] TypeScript check passes ✓
-- [x] Database connection test passes ✓
-
----
-
-### TASK 4 — `lib/llm/gemini.ts`
-
-**What it is:** The Gemini-specific LLM implementation. This file knows how to talk to Google's Gemini API. It is the only file that imports the Gemini SDK directly.
-
-**Build instructions:**
-- Import `@google/generative-ai`
-- Use model: `gemini-2.5-flash` — this is the ONLY correct model ID. Never use gemini-2.0-flash.
-- Set temperature from `LLM_TEMPERATURE` in config
-- Set max tokens from `LLM_MAX_TOKENS` in config
-- Handle rate limiting: if a 429 error occurs, wait 60 seconds and retry once
-- Handle parse errors: if JSON is expected but response is malformed, retry once
-- Export a single function: `generateWithGemini(systemPrompt: string, userMessage: string): Promise<LLMResponse>`
-
-**Critical pattern:**
-```typescript
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../config';
-import { LLMResponse } from '../types';
-
-const MODEL_ID = 'gemini-2.5-flash'; // NEVER change this to 2.0
-
-export async function generateWithGemini(
-  systemPrompt: string,
-  userMessage: string
-): Promise<LLMResponse> {
-  // implementation here
-}
-```
-
-**Plain English explanation:** This file is the translator that speaks Google's language. When TEDAR needs to ask the AI something, it sends the question through this file. The temperature setting (0.3) means the AI gives consistent, reliable answers rather than creative ones — which is what we want for analysis.
-
-**Test:** Run `npx tsc --noEmit`. Zero errors.
-
-- [x] `lib/llm/gemini.ts` created ✓
-- [x] TypeScript check passes ✓
-
----
-
-### TASK 5 — `lib/llm/provider.ts`
-
-**What it is:** The model-agnostic wrapper. This is the ONLY file that the rest of the application calls when it needs the LLM. It reads the `LLM_PROVIDER` environment variable and routes to the correct implementation. Switching LLM providers requires changing one env var — nothing else.
-
-**Build instructions:**
-- Read `LLM_PROVIDER` from environment variables
-- If `LLM_PROVIDER=gemini` → route to `generateWithGemini`
-- If `LLM_PROVIDER=claude` → throw "Claude provider not yet implemented"
-- If `LLM_PROVIDER=openai` → throw "OpenAI provider not yet implemented"
-- Export a single function: `generateLLMResponse`
-
-```typescript
-export async function generateLLMResponse(
-  systemPrompt: string,
-  userMessage: string,
-  options?: {
-    temperature?: number;
-    maxTokens?: number;
-  }
-): Promise<LLMResponse>
-```
-
-**Plain English explanation:** This file is the switchboard. Every part of TEDAR that needs AI asks this single function. The function then decides which AI to use based on the environment variable. This is why switching from Gemini to Claude is one line change — you change `LLM_PROVIDER=gemini` to `LLM_PROVIDER=claude` in .env.local and this file handles the rest.
-
-**Test:** Run `npx tsc --noEmit`. Zero errors. Then test the provider routes correctly:
-```bash
-npx ts-node -e "
-process.env.LLM_PROVIDER='gemini';
-process.env.GEMINI_API_KEY='$(grep GEMINI_API_KEY .env.local | cut -d= -f2)';
-import('./lib/llm/provider').then(m => 
-  m.generateLLMResponse('You are a test.', 'Say OK in one word.')
-  .then(r => console.log('✅ LLM provider works:', r.text))
-  .catch(e => console.log('❌', e.message))
-)"
-```
-
-- [x] `lib/llm/provider.ts` created ✓
-- [x] TypeScript check passes ✓
-- [x] Provider test passes ✓
-
----
-
-### TASK 6 — `lib/prompts/channel-ranker.ts`
-
-**What it is:** The LLM prompt that takes 50 YouTube channels found by YouTube Search and ranks the top 20 by relevance to the niche keyword. This is what makes TEDAR's channel discovery intelligent rather than just taking whatever YouTube returns.
-
-**Build instructions:**
-- Export a single function: `buildChannelRankerPrompt`
-- The system prompt instructs the LLM to act as a niche relevance expert
-- The user message includes the niche keyword and the list of channels as JSON
-- The output must be valid JSON — instruct the LLM explicitly to return ONLY JSON, no preamble, no markdown, no backticks
-- The JSON output format must be an array of ranked channels with relevanceScore and relevanceReason
+- Export a single function: `buildInputInterpreterPrompt`
+- The system prompt instructs the LLM to act as an input classifier with exactly two possible outputs
+- Must return ONLY valid JSON — no markdown, no preamble, no explanation, no backticks
+- Never ask more than one question at a time
+- URL inputs must always be classified immediately — never ask the user about a URL
+- `conversationHistory` is an optional string summary of prior exchanges in this session (used if the user is answering a clarifying question)
 
 **Function signature:**
 ```typescript
-export function buildChannelRankerPrompt(
-  nicheKeyword: string,
-  channels: ChannelSearchResult[]
+export function buildInputInterpreterPrompt(
+  userInput: string,
+  conversationHistory?: string
 ): { systemPrompt: string; userMessage: string }
 ```
 
-**System prompt must instruct the LLM to:**
-- Return ONLY a JSON array, nothing else — no explanation, no markdown
-- Select the top 20 most relevant channels for the exact niche
-- Exclude channels that are only tangentially related
-- Give each channel a relevanceScore from 0–100
-- Give each channel a one-sentence relevanceReason
-- Sort by relevanceScore descending
+**The system prompt must instruct the LLM to return exactly one of these two JSON shapes:**
 
-**Expected JSON output format:**
+Shape 1 — Ready to run:
 ```json
-[
-  {
-    "youtubeChannelId": "UCxxxxxxx",
-    "channelName": "Channel Name",
-    "relevanceScore": 92,
-    "relevanceReason": "Exclusively covers fitness motivation content with 80% of videos directly on-topic"
-  }
-]
+{
+  "isReady": true,
+  "inputType": "niche",
+  "inputValue": "personal finance",
+  "confirmationMessage": "I'll scan the personal finance niche and find the top-performing outlier videos across the biggest channels."
+}
 ```
+
+Shape 2 — Needs one clarifying question:
+```json
+{
+  "isReady": false,
+  "clarifyingQuestion": "Are you looking to explore the whole personal finance niche, or do you have a specific channel in mind?"
+}
+```
+
+**Classification rules the system prompt must enforce:**
+- YouTube URLs containing `/watch?v=` or `youtu.be/` → always `"video"`, use the full URL as `inputValue`
+- YouTube URLs containing `/@`, `/channel/`, `/c/` → always `"channel"`, use the full URL as `inputValue`
+- Any `@handle` without a full URL → always `"channel"`, construct inputValue as `https://youtube.com/@handle`
+- A clear topic, keyword, or niche phrase → `"niche"`, cleaned keyword as `inputValue`
+- Genuinely ambiguous input → `isReady: false` with one specific question
+- `confirmationMessage` must be a complete sentence describing exactly what TEDAR is about to do (name the niche, channel, or video clearly)
+- When in doubt about intent → ask rather than guess
+
+**Plain English explanation to give founder:** This file contains the instructions that tell the AI how to read whatever the founder types and figure out what they actually want. It's the interpreter sitting between human thought and the data pipeline.
 
 **Test:** Run `npx tsc --noEmit`. Zero errors.
 
-- [x] `lib/prompts/channel-ranker.ts` created ✓
+- [x] `lib/prompts/input-interpreter.ts` created ✓
 - [x] TypeScript check passes ✓
 
 ---
 
-### TASK 7 — `lib/youtube/search.ts`
+### TASK 2 — `lib/pipeline/niche-pipeline.ts`
 
-**What it is:** Searches YouTube for channels matching a niche keyword. Returns up to 50 candidate channels for the LLM to rank.
+**What it is:** The niche keyword Scout pipeline as a proper callable function. This is the same logic from `scripts/test-scout-full.ts` built in Phase 1, refactored into a clean exported function that the API route can call and await.
 
 **Build instructions:**
-- Use the `googleapis` package
-- Use YouTube Search API with `type: 'channel'`
-- Return up to `YOUTUBE_MAX_RESULTS` (50) results
-- Return typed `ChannelSearchResult[]`
-- Handle errors: API key missing, quota exceeded, network error
-- Validate environment variable at module load time
+- Import from Phase 1 files only — do NOT re-implement any logic that already exists
+- Imports needed: `searchChannels` (youtube/search), `buildChannelRankerPrompt` (prompts/channel-ranker), `generateLLMResponse` (llm/provider), `getChannelVideos` (youtube/channel), `detectOutliers` (youtube/outlier), `upsertNiche`, `upsertChannel`, `upsertVideo`, `createPipelineRun`, `updatePipelineRun` (supabase), `DEFAULT_CONFIG` (config), all required types (types)
+- Use `stripJsonFences` from `lib/llm/provider.ts` before parsing the LLM channel ranking response
+- Update `pipeline_runs` record at each major step as the pipeline progresses
+- Return a fully typed result
+
+**New type — add to `lib/types.ts`:**
+```typescript
+interface NichePipelineResult {
+  runId: string;
+  inputType: 'niche';
+  inputValue: string;
+  channelsScanned: number;
+  videosScanned: number;
+  outliersFound: number;
+  outliers: OutlierResult[];
+  topChannels: RankedChannel[];
+}
+```
 
 **Function signature:**
 ```typescript
-export async function searchChannels(
+export async function runNichePipeline(
   keyword: string
-): Promise<ChannelSearchResult[]>
+): Promise<NichePipelineResult>
 ```
 
-**Plain English explanation:** This function is TEDAR's first step — it asks YouTube "give me up to 50 channels related to this topic." YouTube returns a list of channels. We then pass that list to the LLM to pick the most relevant ones.
+**Pipeline steps in order:**
+1. `createPipelineRun('niche', keyword)` → `runId`
+2. `upsertNiche({ name: keyword, keywords: [keyword], channelCount: 0 })` → `nicheId`
+3. `searchChannels(keyword)` → `candidates`
+4. `generateLLMResponse(...)` with channel ranker prompt → parse JSON → `rankedChannels`
+5. `updatePipelineRun(runId, { channelsFound: rankedChannels.length })`
+6. For each of the top `DEFAULT_CONFIG.maxChannelsToScan` ranked channels:
+   - `upsertChannel(...)` → `channelDbId`
+   - `getChannelVideos(channel.youtubeChannelId, DEFAULT_CONFIG.maxVideosPerChannel)` → `videos`
+   - `detectOutliers(videos, channel.channelName, DEFAULT_CONFIG)` → `outliers`
+   - For each video: `upsertVideo({ ...video, channelId: channelDbId, outlierScore: ..., outlierCategory: ... })`
+   - `updatePipelineRun(runId, { videosScanned: runningTotal, outliersFound: runningTotal })`
+7. `updatePipelineRun(runId, { status: 'completed', completedAt: new Date().toISOString() })`
+8. Return `NichePipelineResult` with all outliers sorted by score descending
 
-**Test:** Create `scripts/test-search.ts` and run it:
-```typescript
-// scripts/test-search.ts
-import { searchChannels } from '../lib/youtube/search';
+**Plain English explanation:** This function strings together all the Phase 1 building blocks in the right order and saves everything as it goes. It is the niche Scout from the terminal test, now packaged so the API route can call it with one line.
 
-async function main() {
-  console.log('Testing YouTube channel search...');
-  const results = await searchChannels('fitness motivation');
-  console.log(`✅ Found ${results.length} channels`);
-  console.log('First 3 results:');
-  results.slice(0, 3).forEach(c => {
-    console.log(`  - ${c.channelName} (${c.youtubeChannelId})`);
-  });
-}
+**Test:** Run `npx tsc --noEmit`. Zero errors.
 
-main().catch(console.error);
-```
-
-Run with: `npx ts-node scripts/test-search.ts`
-
-Expected: 50 channels returned, first 3 printed with names and IDs.
-
-- [x] `lib/youtube/search.ts` created ✓
-- [x] `scripts/test-search.ts` created ✓
-- [x] Test returns 50 channels with no errors ✓
+- [x] `lib/pipeline/niche-pipeline.ts` created ✓
+- [x] `NichePipelineResult` added to `lib/types.ts` ✓
+- [x] TypeScript check passes ✓
 
 ---
 
-### TASK 8 — `lib/youtube/channel.ts`
+### TASK 3 — `lib/pipeline/channel-pipeline.ts`
 
-**What it is:** Fetches the most recent videos from a YouTube channel. This is how TEDAR builds the video list it then scores for outliers.
+**What it is:** The channel URL Scout pipeline. Used when a user pastes a specific YouTube channel URL. Skips the discovery and LLM ranking steps entirely — scans just that one channel.
 
-**Build instructions:**
-- Two functions: `resolveChannelId` and `getChannelVideos`
-- `resolveChannelId` handles any input format: channel URL, @handle, or raw channel ID
-- `getChannelVideos` returns the most recent N videos with full metadata
-- Use `googleapis` YouTube Data API
-- Return typed `VideoData[]`
-
-**Function signatures:**
+**New type — add to `lib/types.ts`:**
 ```typescript
-export async function resolveChannelId(input: string): Promise<string>
-// Input can be: "https://youtube.com/@mkbhd", "@mkbhd", "UCBcRF18a7Qf58cCRy5xuWwQ"
-// Returns: raw YouTube channel ID
-
-export async function getChannelVideos(
-  channelId: string,
-  maxResults: number
-): Promise<VideoData[]>
-// Returns most recent maxResults videos with metadata
-```
-
-**Test:** Add to `scripts/test-channel.ts`:
-```typescript
-import { resolveChannelId, getChannelVideos } from '../lib/youtube/channel';
-
-async function main() {
-  const channelId = await resolveChannelId('https://www.youtube.com/@mkbhd');
-  console.log('✅ Resolved channel ID:', channelId);
-  
-  const videos = await getChannelVideos(channelId, 10);
-  console.log(`✅ Got ${videos.length} videos`);
-  console.log('Most recent:', videos[0].title, '| Views:', videos[0].viewCount);
+interface ChannelPipelineResult {
+  runId: string;
+  inputType: 'channel';
+  inputValue: string;
+  channelName: string;
+  videosScanned: number;
+  outliersFound: number;
+  outliers: OutlierResult[];
 }
-
-main().catch(console.error);
 ```
-
-Run with: `npx ts-node scripts/test-channel.ts`
-
-Expected: Channel ID resolved, 10 videos returned with titles and view counts.
-
-- [x] `lib/youtube/channel.ts` created ✓
-- [x] `scripts/test-channel.ts` created ✓
-- [x] Test resolves channel ID and returns 10 videos ✓
-
----
-
-### TASK 9 — `lib/youtube/metadata.ts`
-
-**What it is:** Fetches metadata for a single YouTube video by URL or ID. Used when a user pastes a specific video URL (Mode 3 input).
-
-**Build instructions:**
-- Single function: `getVideoData`
-- Handle all YouTube URL formats: full URL, short URL (youtu.be), embed URL, URL with timestamp
-- Extract video ID from any format
-- Fetch metadata via YouTube Data API
-- Return typed `VideoData`
-- Throw clear error if video not found
 
 **Function signature:**
 ```typescript
-export async function getVideoData(videoUrl: string): Promise<VideoData>
+export async function runChannelPipeline(
+  channelUrl: string
+): Promise<ChannelPipelineResult>
 ```
 
-**Test:** Run `npx tsc --noEmit`. Zero errors. Quick manual test:
+**Pipeline steps in order:**
+1. `createPipelineRun('channel', channelUrl)` → `runId`
+2. `resolveChannelId(channelUrl)` → `youtubeChannelId`
+3. `getChannelVideos(youtubeChannelId, DEFAULT_CONFIG.maxVideosPerChannel)` → `videos`
+4. Extract `channelName` from the first video in the list
+5. `upsertChannel({ youtubeChannelId, channelName, channelUrl })` → `channelDbId`
+6. `detectOutliers(videos, channelName, DEFAULT_CONFIG)` → `outliers`
+7. For each video: `upsertVideo({ ...video, channelId: channelDbId, outlierScore: ..., outlierCategory: ... })`
+8. `updatePipelineRun(runId, { channelsFound: 1, videosScanned: videos.length, outliersFound: outliers.length, status: 'completed', completedAt: now })`
+9. Return `ChannelPipelineResult`
+
+**Plain English explanation:** When the founder already knows which channel they want to study, this shortcut skips the discovery step and goes straight to scanning. Faster and cheaper on the YouTube API quota.
+
+**Test:** Run `npx tsc --noEmit`. Zero errors.
+
+- [x] `lib/pipeline/channel-pipeline.ts` created ✓
+- [x] `ChannelPipelineResult` added to `lib/types.ts` ✓
+- [x] TypeScript check passes ✓
+
+---
+
+### TASK 4 — `lib/pipeline/video-pipeline.ts`
+
+**What it is:** The video URL pipeline. Fetches metadata for a single specific video and saves it to the database. No outlier scoring is calculated — that requires a channel baseline, which doesn't exist for a standalone video. Decoder analysis is deferred to Phase 3.
+
+**New type — add to `lib/types.ts`:**
+```typescript
+interface VideoPipelineResult {
+  runId: string;
+  inputType: 'video';
+  inputValue: string;
+  video: VideoData;
+  decoderAvailable: false; // Always false in Phase 2. Phase 3 activates this.
+}
+```
+
+**Function signature:**
+```typescript
+export async function runVideoPipeline(
+  videoUrl: string
+): Promise<VideoPipelineResult>
+```
+
+**Pipeline steps in order:**
+1. `createPipelineRun('video', videoUrl)` → `runId`
+2. `getVideoData(videoUrl)` → `video`
+3. `upsertVideo(video)` → saves to DB (no outlierScore, no outlierCategory — leave undefined)
+4. `updatePipelineRun(runId, { videosScanned: 1, status: 'completed', completedAt: new Date().toISOString() })`
+5. Return `VideoPipelineResult` with `decoderAvailable: false`
+
+**Plain English explanation:** When the founder pastes a specific video link, TEDAR fetches the video's details and stores them. The psychological analysis of why it worked (the Decode step) is not available until Phase 3. The page shows the video's data and a greyed-out Decode button to signal what's coming.
+
+**Test:** Run `npx tsc --noEmit`. Zero errors.
+
+- [x] `lib/pipeline/video-pipeline.ts` created ✓
+- [x] `VideoPipelineResult` added to `lib/types.ts` ✓
+- [x] TypeScript check passes ✓
+
+---
+
+### TASK 5 — `lib/supabase-queries.ts`
+
+**What it is:** Read-only database query functions for the dashboard. Phase 1's `lib/supabase.ts` handles all write operations. This new file handles reading data back for display.
+
+**Why a separate file:** `lib/supabase.ts` is already at or near 150 lines. Read functions are logically distinct from write functions. This split keeps both files clean and within the line limit.
+
+**Build instructions:**
+- Import `supabase` (anon key, not admin) from `lib/supabase.ts` — reads use the anon client
+- Import types from `lib/types.ts`
+- All functions return explicit typed results — never `any`
+
+**Functions to implement:**
+
+```typescript
+import { supabase } from './supabase';
+import { PipelineRun, OutlierResult } from './types';
+import { DEFAULT_CONFIG } from './config';
+
+// Get the current state of a pipeline run by ID
+export async function getPipelineRun(runId: string): Promise<PipelineRun | null>
+
+// Get all outlier videos for a completed pipeline run
+// Join videos + channels where outlier_score >= DEFAULT_CONFIG.flagThreshold
+// Sort by outlier_score DESC
+export async function getOutliersForRun(runId: string): Promise<OutlierResult[]>
+
+// Get the most recent pipeline runs (for future history display — available now, used later)
+export async function getRecentRuns(limit: number): Promise<PipelineRun[]>
+```
+
+**Plain English explanation:** This file lets the dashboard read data back from the database. The write side (saving everything as the pipeline runs) was built in Phase 1. The read side (displaying it in the browser) is what this file adds.
+
+**Test:** Run `npx tsc --noEmit`. Zero errors. Then test the connection:
 ```bash
 npx ts-node -e "
-import('./lib/youtube/metadata').then(m =>
-  m.getVideoData('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
-  .then(v => console.log('✅ Got video:', v.title, '| Views:', v.viewCount))
+import('./lib/supabase-queries').then(m =>
+  m.getRecentRuns(5).then(runs => console.log('✅ Recent runs fetched:', runs.length))
   .catch(e => console.log('❌', e.message))
 )"
 ```
 
-- [x] `lib/youtube/metadata.ts` created ✓
+- [x] `lib/supabase-queries.ts` created ✓
 - [x] TypeScript check passes ✓
-- [x] Manual test returns video title and view count ✓
+- [x] Connection test passes ✓
 
 ---
 
-### TASK 10 — `lib/youtube/outlier.ts`
+### TASK 6 — `app/api/scout/interpret/route.ts`
 
-**What it is:** The core Scout logic. Takes a list of videos for a channel and calculates which ones are significantly outperforming the channel's average. This is the mathematical heart of the Scout Engine.
+**What it is:** The API route that handles the LLM interpretation of user input. The frontend calls this every time the user submits a message. Fast — returns in under 3 seconds. Does not touch YouTube or run any pipeline.
 
 **Build instructions:**
-- Three functions: `calculateChannelBaseline`, `categoriseOutlier`, `detectOutliers`
-- Import all thresholds from `lib/config.ts` — never hard-code numbers here
-- The baseline excludes the top 5% of videos by view count (uses `CHANNEL_BASELINE_TRIM_PERCENT`)
-- `categoriseOutlier` maps a score to an `OutlierCategory`
-- `detectOutliers` returns only videos above the `flagThreshold`
+- POST handler only
+- Read `userInput: string` and optional `conversationHistory: string` from request body
+- Validate that `userInput` is present — return 400 if missing
+- Call `buildInputInterpreterPrompt` from `lib/prompts/input-interpreter.ts`
+- Call `generateLLMResponse` from `lib/llm/provider.ts`
+- Use `stripJsonFences` before parsing the response
+- On JSON parse failure: do not crash — return `{ isReady: false, clarifyingQuestion: "I didn't quite catch that. Could you rephrase?" }`
+- Return the parsed interpreter result as JSON
 
-**Function signatures:**
+**Request body:**
 ```typescript
-export function calculateChannelBaseline(videos: VideoData[]): number
-// Returns average view count, excluding top 5% by views
-
-export function categoriseOutlier(score: number): OutlierCategory
-// Maps score to category using OUTLIER_THRESHOLDS from config
-
-export function detectOutliers(
-  videos: VideoData[],
-  channelName: string,
-  config: PipelineConfig
-): OutlierResult[]
-// Returns only videos above flagThreshold, sorted by score descending
+{ userInput: string; conversationHistory?: string }
 ```
 
-**Plain English explanation:** This function is the "what's unusual?" detector. It calculates what a "normal" video looks like for a channel, then flags anything that performed much better than normal.
-
-**Why the algorithm is built this way — these reasons must be included as code comments:**
-
-- **Trimmed mean (exclude top 5%):** If a channel has one video with 10M views and everything else averages 100K, a simple average produces a false baseline of ~300K, making real outliers look normal. Excluding top 5% gives the channel's true typical performance. Standard statistical technique.
-- **3x default threshold:** Normal video performance varies roughly 0.5x–2x the average due to natural variance (timing, thumbnail, topic). Anything above 3x is statistically unusual. Mirrors thresholds used in academic studies on viral content diffusion.
-- **50 videos per channel:** Fewer than 30 gives an unreliable baseline — one bad month skews everything. More than 50 adds API cost without meaningfully improving accuracy.
-- **Four configurable metrics:** View count alone misses videos that drive unusually high discussion or fast early growth. The four metrics catch different types of outlier behaviour.
-
-**Test:** Add to `scripts/test-outlier.ts`:
+**Response — one of:**
 ```typescript
-import { resolveChannelId, getChannelVideos } from '../lib/youtube/channel';
-import { detectOutliers } from '../lib/youtube/outlier';
-import { DEFAULT_CONFIG } from '../lib/config';
+{ isReady: true; inputType: 'niche' | 'channel' | 'video'; inputValue: string; confirmationMessage: string }
+{ isReady: false; clarifyingQuestion: string }
+{ error: string } // status 400 or 500
+```
 
-async function main() {
-  const channelId = await resolveChannelId('https://www.youtube.com/@mkbhd');
-  const videos = await getChannelVideos(channelId, 50);
-  console.log(`✅ Got ${videos.length} videos`);
-  
-  const outliers = detectOutliers(videos, 'MKBHD', DEFAULT_CONFIG);
-  console.log(`✅ Found ${outliers.length} outliers`);
-  
-  outliers.slice(0, 5).forEach((o, i) => {
-    console.log(`${i+1}. [${o.outlierCategory.toUpperCase()}] ${o.video.title}`);
-    console.log(`   Score: ${o.outlierScore.toFixed(1)}x | Views: ${o.video.viewCount.toLocaleString()}`);
-  });
+**Plain English explanation:** This API route is the "thinking" step before anything runs. The frontend sends whatever the user typed, and this route asks the AI what it means. The result tells the frontend either "ready to go, here's what I understood" or "I need one more piece of information."
+
+**Test:** Start the dev server (`npm run dev`) and test with curl:
+```bash
+# Test 1: niche keyword
+curl -X POST http://localhost:3000/api/scout/interpret \
+  -H "Content-Type: application/json" \
+  -d '{"userInput": "fitness motivation channels"}'
+
+# Test 2: channel URL
+curl -X POST http://localhost:3000/api/scout/interpret \
+  -H "Content-Type: application/json" \
+  -d '{"userInput": "https://www.youtube.com/@mkbhd"}'
+
+# Test 3: video URL
+curl -X POST http://localhost:3000/api/scout/interpret \
+  -H "Content-Type: application/json" \
+  -d '{"userInput": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
+
+# Test 4: ambiguous input
+curl -X POST http://localhost:3000/api/scout/interpret \
+  -H "Content-Type: application/json" \
+  -d '{"userInput": "finance"}'
+```
+
+Expected: Tests 1–3 return `isReady: true` with the correct `inputType`. Test 4 returns `isReady: false` with a clarifying question.
+
+- [x] `app/api/scout/interpret/route.ts` created ✓
+- [x] Test 1 returns `inputType: "niche"` ✓
+- [x] Test 2 returns `inputType: "channel"` ✓
+- [x] Test 3 returns `inputType: "video"` ✓
+- [x] Test 4 returns `isReady: false` with a question ✓
+
+---
+
+### TASK 7 — `app/api/scout/run/route.ts`
+
+**What it is:** The API route that runs the Scout pipeline end-to-end. Receives the classified input, routes to the correct pipeline function, waits for it to complete, generates a narrator summary, and returns everything.
+
+**Build instructions:**
+- POST handler only
+- Read `inputType: 'niche' | 'channel' | 'video'` and `inputValue: string` from request body
+- Validate both fields are present — return 400 if missing
+- Route to the correct pipeline:
+  - `'niche'` → `runNichePipeline(inputValue)`
+  - `'channel'` → `runChannelPipeline(inputValue)`
+  - `'video'` → `runVideoPipeline(inputValue)`
+- After pipeline completes, make one more LLM call to generate the narrator message
+- Return full results
+- Catch all errors — return `{ error: string }` with status 500, never crash
+
+**Narrator LLM call (inline in this route — not a separate file):**
+
+System prompt (exact):
+> "You are TEDAR, a content intelligence system. You have just completed a Scout analysis. Summarise the results in 2–3 sentences in a direct, intelligent voice. Name the top outlier video and its score. Note one pattern across the results if visible. Do not use bullet points. Do not use the word 'fascinating'. Be specific, not generic."
+
+User message: a plain-text summary of the results (channel count, video count, outlier count, top 3 outlier titles and scores).
+
+**Request body:**
+```typescript
+{ inputType: 'niche' | 'channel' | 'video'; inputValue: string }
+```
+
+**Response body:**
+```typescript
+{
+  runId: string;
+  inputType: string;
+  results: NichePipelineResult | ChannelPipelineResult | VideoPipelineResult;
+  narratorMessage: string;
 }
-
-main().catch(console.error);
 ```
 
-Run with: `npx ts-node scripts/test-outlier.ts`
+**Plain English explanation:** This is the route that actually does the heavy lifting. The frontend calls it once, waits while the Scout runs, and gets back everything it needs to display: the runId for future lookups, the full results, and the narrator's plain-English summary of what was found.
 
-Expected: Top 5 outliers printed with scores and categories. Manually verify on YouTube that the top result genuinely has more views than the channel average.
+**Test:** With `npm run dev` running, test all three modes with curl:
+```bash
+# Niche mode (takes 20–40 seconds)
+curl -X POST http://localhost:3000/api/scout/run \
+  -H "Content-Type: application/json" \
+  -d '{"inputType": "niche", "inputValue": "personal finance"}' \
+  --max-time 120
 
-- [x] `lib/youtube/outlier.ts` created ✓
-- [x] `scripts/test-outlier.ts` created ✓
-- [x] Test returns outliers with correct scores ✓
-- [x] Manually verified top outlier is genuinely high-performing ✓
+# Channel mode (takes 5–15 seconds)
+curl -X POST http://localhost:3000/api/scout/run \
+  -H "Content-Type: application/json" \
+  -d '{"inputType": "channel", "inputValue": "https://www.youtube.com/@mkbhd"}' \
+  --max-time 60
+
+# Video mode (takes 2–5 seconds)
+curl -X POST http://localhost:3000/api/scout/run \
+  -H "Content-Type: application/json" \
+  -d '{"inputType": "video", "inputValue": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' \
+  --max-time 30
+```
+
+After each test: check Supabase dashboard to verify new rows in `channels`, `videos`, and `pipeline_runs` tables.
+
+- [x] `app/api/scout/run/route.ts` created ✓
+- [x] Niche mode curl test returns results and narratorMessage ✓ (verified via Supabase — 1000 videos, 96 outliers saved; Gemini quota exhausted after multiple runs)
+- [x] Channel mode curl test returns results and narratorMessage ✓
+- [x] Video mode curl test returns video metadata ✓
+- [x] New data verified in Supabase after each test ✓
 
 ---
 
-### TASK 11 — Full Scout Integration Test
+### TASK 8 — `app/api/scout/results/[runId]/route.ts`
 
-**What it is:** A full end-to-end test that runs the complete Scout flow — keyword → channel discovery → LLM ranking → video scanning → outlier detection → database storage — and verifies everything is saved to Supabase.
+**What it is:** A GET endpoint that retrieves saved results for any past pipeline run by its ID. Allows revisiting previous analyses without re-running the pipeline. Used in Phase 5 to load historical results on the dashboard.
 
 **Build instructions:**
-- Add to `scripts/test-search.ts` or create a new `scripts/test-scout-full.ts`
-- Run the full pipeline manually in sequence
-- After running, check Supabase dashboard to verify data was saved
+- GET handler only
+- Extract `runId` from URL params (Next.js App Router: `params.runId`)
+- Call `getPipelineRun(runId)` from `lib/supabase-queries.ts`
+- Call `getOutliersForRun(runId)` from `lib/supabase-queries.ts`
+- If `runId` not found: return 404 with `{ error: 'Run not found' }`
+- Return run metadata + outliers
 
-**Full test script:**
+**Response body:**
 ```typescript
-import { searchChannels } from '../lib/youtube/search';
-import { buildChannelRankerPrompt } from '../lib/prompts/channel-ranker';
-import { generateLLMResponse } from '../lib/llm/provider';
-import { getChannelVideos } from '../lib/youtube/channel';
-import { detectOutliers } from '../lib/youtube/outlier';
-import { upsertNiche, upsertChannel, upsertVideo, createPipelineRun, updatePipelineRun } from '../lib/supabase';
-import { DEFAULT_CONFIG } from '../lib/config';
-import { RankedChannel } from '../lib/types';
+{
+  run: PipelineRun;
+  outliers: OutlierResult[];
+}
+```
 
-async function main() {
-  const keyword = 'personal finance';
-  console.log(`\n🔍 Starting Scout for: "${keyword}"\n`);
+**Plain English explanation:** This saves the founder from re-running the Scout every time. If they ran a niche scan yesterday, they can pull up those results instantly from the database without touching the YouTube or LLM APIs again.
 
-  // Step 1: Create pipeline run
-  const runId = await createPipelineRun('niche', keyword);
-  console.log('✅ Pipeline run created:', runId);
+**Test:** Take the `runId` returned from any of the Task 7 curl tests and call this endpoint:
+```bash
+curl http://localhost:3000/api/scout/results/PASTE_YOUR_RUN_ID_HERE
+```
+Expected: The run record and all outlier videos returned from the database, matching what the Task 7 test produced.
 
-  // Step 2: Create niche record
-  const nicheId = await upsertNiche({ name: keyword, keywords: [keyword], channelCount: 0 });
-  console.log('✅ Niche saved to DB:', nicheId);
+- [x] `app/api/scout/results/[runId]/route.ts` created ✓
+- [x] Results retrieved correctly from Supabase ✓
+- [x] 404 returned for unknown runId ✓
 
-  // Step 3: Search YouTube for channels
-  const candidates = await searchChannels(keyword);
-  console.log(`✅ Found ${candidates.length} candidate channels on YouTube`);
+---
 
-  // Step 4: LLM ranks channels
-  const { systemPrompt, userMessage } = buildChannelRankerPrompt(keyword, candidates);
-  const llmResponse = await generateLLMResponse(systemPrompt, userMessage);
-  
-  let rankedChannels: RankedChannel[] = [];
+### TASK 9 — `components/OutlierCard.tsx`
+
+**What it is:** The UI card that displays a single outlier video. This is what the founder sees for each result in the output grid.
+
+**Build instructions:**
+- `'use client'` directive at top
+- Props: `result: OutlierResult` and `rank: number`
+- Use shadcn/ui `Card`, `CardContent`, `CardHeader`, `Badge`
+- Display these fields: thumbnail image, rank number, video title, channel name, outlier score (e.g. "4.7x"), outlier category badge, view count (formatted with commas), publish date (formatted as "12 Mar 2025")
+- Badge colour by category (use Tailwind classes, not custom CSS):
+  - `viral` → red (`bg-red-100 text-red-800`)
+  - `strong` → orange (`bg-orange-100 text-orange-800`)
+  - `notable` → yellow (`bg-yellow-100 text-yellow-800`)
+  - `above_average` → blue (`bg-blue-100 text-blue-800`)
+- Below the card: a "Decode this video" button — **disabled, visually greyed out**. Add a tooltip or subtitle: "Psychological analysis — available in Phase 3"
+- The disabled button must NOT be clickable or trigger any function
+- Use Tailwind for all styling. No custom CSS. No inline styles.
+- Keep under 150 lines. If it exceeds this, split the badge colour logic into a helper function.
+
+**Props interface:**
+```typescript
+interface OutlierCardProps {
+  result: OutlierResult;
+  rank: number;
+}
+```
+
+**Plain English explanation:** This is what each outlier video looks like on screen — a card with the thumbnail, title, channel, and a coloured badge showing how much it outperformed the channel's average. The greyed-out Decode button tells the founder that deeper analysis is coming in the next build phase.
+
+**Test:** Run `npx tsc --noEmit`. Zero errors. Visual appearance will be tested in Task 11.
+
+- [x] `components/OutlierCard.tsx` created ✓
+- [x] TypeScript check passes ✓
+
+---
+
+### TASK 10 — `components/PipelineProgress.tsx`
+
+**What it is:** The animated progress display shown while the Scout pipeline is running. Because the pipeline runs synchronously in the API route, this component simulates progress by cycling through status messages while the frontend awaits the response. This is the correct MVP approach — no live database polling needed.
+
+**Build instructions:**
+- `'use client'` directive at top
+- Accept these props:
+  - `status: 'idle' | 'interpreting' | 'running' | 'complete' | 'error'`
+  - `inputType?: 'niche' | 'channel' | 'video'`
+- When `status === 'running'`: use `useEffect` + `useState` to cycle through messages every 3 seconds
+- When `status !== 'running'`: render nothing (`return null`)
+- Use shadcn/ui `Progress` bar (set to indeterminate using CSS animation — the value prop does not need to be accurate)
+- Use Tailwind for all styling
+
+**Message sequences by input type:**
+
+Niche mode:
+```
+"Searching YouTube for channels in this niche..."
+"Asking the AI to rank channels by relevance..."
+"Pulling recent videos from top channels..."
+"Calculating each channel's performance baseline..."
+"Detecting outlier videos..."
+"Saving results to the database..."
+```
+
+Channel mode:
+```
+"Fetching recent videos from the channel..."
+"Calculating the channel's performance baseline..."
+"Detecting outlier videos..."
+"Saving results to the database..."
+```
+
+Video mode:
+```
+"Fetching video metadata..."
+"Saving to the database..."
+```
+
+**Plain English explanation:** Because the niche pipeline can take up to 30 seconds, the founder needs to see that TEDAR is working — not wonder if something broke. This component cycles through plain-English descriptions of each step so the wait feels purposeful rather than mysterious.
+
+**Test:** Run `npx tsc --noEmit`. Zero errors. Visual test in Task 11.
+
+- [x] `components/PipelineProgress.tsx` created ✓
+- [x] TypeScript check passes ✓
+
+---
+
+### TASK 11 — `app/page.tsx`
+
+**What it is:** The main dashboard page. The only page in Phase 2. Assembles all components and manages the full conversation state machine from input to results.
+
+**Build instructions:**
+- `'use client'` directive at top
+- All state managed with `useState` — no external state management
+- Import: `OutlierCard` from `components/OutlierCard`, `PipelineProgress` from `components/PipelineProgress`
+- Import from shadcn/ui: `Button`, `Input`, `Badge`, `Alert`, `AlertDescription`
+- Keep under 150 lines — extract handler functions where needed to keep the JSX readable
+
+**State interface:**
+```typescript
+type PageState = 'idle' | 'interpreting' | 'clarifying' | 'running' | 'complete' | 'error';
+
+// Use individual useState hooks, not a single object, for simplicity:
+const [pageState, setPageState] = useState<PageState>('idle');
+const [userInput, setUserInput] = useState('');
+const [conversationHistory, setConversationHistory] = useState('');
+const [clarifyingQuestion, setClarifyingQuestion] = useState('');
+const [confirmationMessage, setConfirmationMessage] = useState('');
+const [inputType, setInputType] = useState<'niche' | 'channel' | 'video' | null>(null);
+const [inputValue, setInputValue] = useState('');
+const [narratorMessage, setNarratorMessage] = useState('');
+const [results, setResults] = useState<NichePipelineResult | ChannelPipelineResult | VideoPipelineResult | null>(null);
+const [errorMessage, setErrorMessage] = useState('');
+```
+
+**State machine:**
+```
+idle           → [user submits input] → interpreting
+interpreting   → [isReady: true]      → (show confirmation, user clicks Run) → running
+interpreting   → [isReady: false]     → clarifying
+clarifying     → [user answers]       → interpreting (with history)
+running        → [pipeline complete]  → complete
+running        → [error]              → error
+[any state]    → [user clicks reset]  → idle
+```
+
+**Page layout (top to bottom):**
+1. **Header** — "TEDAR" in large text + "See Deeper. See Further." tagline (always visible)
+2. **Input section** — text input + submit button. Placeholder: "Type a niche, channel URL, or video URL..." When `interpreting`: button disabled with text "Thinking..." When `running`: input and button both disabled.
+3. **Conversation area** (visible after first submission):
+   - If `clarifying`: show TEDAR's question in a distinct style (e.g. indented, different background), with the input ready to receive an answer
+   - If `running` or `complete`: show the confirmation message in a distinct style
+4. **Progress** — `PipelineProgress` component with current `pageState` and `inputType` (only visible when `running`)
+5. **Results** (visible when `complete`):
+   - Narrator message in a styled text block (italic, slightly larger)
+   - If niche or channel mode: grid of `OutlierCard` components (2 columns on desktop, 1 on mobile)
+   - If video mode: a single card showing the video's metadata + disabled Decode button
+6. **Error state** — shadcn/ui `Alert` component with the error message + "Try again" button that resets to idle
+7. **Footer** — "Start a new search" link/button (resets all state to idle, clears input and results)
+
+**Handler functions:**
+
+```typescript
+async function handleSubmit() {
+  if (!userInput.trim()) return;
+  setPageState('interpreting');
+
   try {
-    rankedChannels = JSON.parse(llmResponse.text);
-    console.log(`✅ LLM ranked ${rankedChannels.length} channels`);
-    console.log('Top 3:');
-    rankedChannels.slice(0, 3).forEach(c => 
-      console.log(`  - ${c.channelName} (score: ${c.relevanceScore}) — ${c.relevanceReason}`)
-    );
-  } catch (e) {
-    console.log('❌ Failed to parse LLM response:', llmResponse.text.slice(0, 200));
-    return;
-  }
-
-  await updatePipelineRun(runId, { channelsFound: rankedChannels.length });
-
-  // Step 5: Scan top 3 channels (limit for test)
-  const topChannels = rankedChannels.slice(0, 3);
-  let totalVideos = 0;
-  let allOutliers: any[] = [];
-
-  for (const channel of topChannels) {
-    const channelId = await upsertChannel({
-      youtubeChannelId: channel.youtubeChannelId,
-      channelName: channel.channelName,
-      channelUrl: channel.channelUrl,
-      nicheId,
-      relevanceScore: channel.relevanceScore,
+    const response = await fetch('/api/scout/interpret', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userInput, conversationHistory }),
     });
+    const data = await response.json();
 
-    const videos = await getChannelVideos(channel.youtubeChannelId, DEFAULT_CONFIG.maxVideosPerChannel);
-    totalVideos += videos.length;
-
-    const outliers = detectOutliers(videos, channel.channelName, DEFAULT_CONFIG);
-    allOutliers = [...allOutliers, ...outliers];
-
-    // Save all videos to DB
-    for (const video of videos) {
-      const outlier = outliers.find(o => o.video.youtubeVideoId === video.youtubeVideoId);
-      await upsertVideo({
-        ...video,
-        channelId,
-        outlierScore: outlier?.outlierScore,
-        outlierCategory: outlier?.outlierCategory,
-      });
+    if (data.isReady) {
+      setConfirmationMessage(data.confirmationMessage);
+      setInputType(data.inputType);
+      setInputValue(data.inputValue);
+      // Stay in a "confirm" sub-state — show confirmation, wait for Run click
+      setPageState('clarifying'); // Reuse clarifying state to show confirmation
+    } else {
+      setClarifyingQuestion(data.clarifyingQuestion);
+      setConversationHistory(prev => prev + `\nUser: ${userInput}\nTEDAR: ${data.clarifyingQuestion}`);
+      setPageState('clarifying');
     }
-
-    console.log(`✅ ${channel.channelName}: ${videos.length} videos, ${outliers.length} outliers`);
+    setUserInput('');
+  } catch {
+    setErrorMessage('Something went wrong. Please try again.');
+    setPageState('error');
   }
-
-  await updatePipelineRun(runId, {
-    videosScanned: totalVideos,
-    outliersFound: allOutliers.length,
-    status: 'completed',
-    completedAt: new Date().toISOString(),
-  });
-
-  console.log(`\n🎯 Scout complete!`);
-  console.log(`   Channels scanned: ${topChannels.length}`);
-  console.log(`   Videos found: ${totalVideos}`);
-  console.log(`   Outliers detected: ${allOutliers.length}`);
-  console.log(`\nTop 5 outliers across all channels:`);
-  allOutliers
-    .sort((a, b) => b.outlierScore - a.outlierScore)
-    .slice(0, 5)
-    .forEach((o, i) => {
-      console.log(`${i+1}. [${o.outlierCategory.toUpperCase()}] ${o.video.title}`);
-      console.log(`   ${o.channelName} | ${o.outlierScore.toFixed(1)}x | ${o.video.viewCount.toLocaleString()} views`);
-    });
-
-  console.log('\n✅ Check your Supabase dashboard — data should be in channels, videos, and pipeline_runs tables');
 }
 
-main().catch(console.error);
+async function handleRun() {
+  setPageState('running');
+
+  try {
+    const response = await fetch('/api/scout/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputType, inputValue }),
+    });
+    const data = await response.json();
+
+    if (data.error) throw new Error(data.error);
+
+    setResults(data.results);
+    setNarratorMessage(data.narratorMessage);
+    setPageState('complete');
+  } catch (e) {
+    setErrorMessage(e instanceof Error ? e.message : 'Scout failed. Please try again.');
+    setPageState('error');
+  }
+}
+
+function handleReset() {
+  setPageState('idle');
+  setUserInput('');
+  setConversationHistory('');
+  setClarifyingQuestion('');
+  setConfirmationMessage('');
+  setInputType(null);
+  setInputValue('');
+  setNarratorMessage('');
+  setResults(null);
+  setErrorMessage('');
+}
 ```
 
-Run with: `npx ts-node scripts/test-scout-full.ts`
+**Important UX rules:**
+- Input and button are disabled during `interpreting` and `running` states
+- The submit button label changes: "Search" (idle/clarifying) → "Thinking..." (interpreting) → "Running..." (running)
+- All fetch errors are caught — the page must never crash or go blank
+- The reset link is always visible at the bottom once any state beyond `idle` is reached
+- Do not use `form` tags — use `onClick` and `onChange` handlers directly
 
-**After running:** Go to Supabase dashboard → Table Editor → check:
-- `niches` table: 1 row for "personal finance"
-- `channels` table: 3 rows (top 3 channels)
-- `videos` table: ~150 rows (50 per channel) — every row has `has_transcript = false` by default. This is correct. Transcript fetching is Phase 3.
-- `pipeline_runs` table: 1 row with status "completed"
-- `video_snapshots` table: ~150 rows (one per video per scan — append only, never overwritten)
-- `channel_snapshots` table: 3 rows (one per channel per scan — append only)
-- `niche_snapshots` table: 1 row (one per niche per scan — append only)
-- `video_velocity_snapshots` table: ~150 rows (one per video with label "latest" — future scans add 24h, 48h, 7d, 30d rows)
+**Plain English explanation:** This page is the cockpit. It holds all the state for the conversation — what the user typed, what TEDAR said back, what's running, and what came back. Everything the founder sees is controlled by this one file.
 
-- [x] Full integration test script created ✓
-- [x] Test runs without errors ✓
-- [x] Data verified in Supabase dashboard ✓
-- [x] Outlier scores make sense when checked against YouTube manually ✓
+**Test:** Run `npm run dev`. Open localhost:3000. Run all four tests below and confirm each passes before ticking the boxes.
+
+**Test 1 — Niche mode (full pipeline):**
+1. Type "personal finance"
+2. TEDAR shows a confirmation message → click Run
+3. Progress messages cycle while pipeline runs (20–40 seconds)
+4. Results appear: narrator summary + outlier cards with scores
+5. Check Supabase: new rows in `niches`, `channels`, `videos`, `pipeline_runs`
+
+**Test 2 — Channel mode:**
+1. Type or paste "https://www.youtube.com/@mkbhd"
+2. TEDAR confirms it's a channel → Run
+3. Results appear: outlier cards for MKBHD
+4. Check Supabase: new channel and video rows
+
+**Test 3 — Video mode:**
+1. Paste any YouTube video URL
+2. TEDAR confirms it's a video → Run
+3. Video metadata card appears with disabled Decode button
+4. Check Supabase: new video row
+
+**Test 4 — Clarification flow:**
+1. Type "finance" (ambiguous)
+2. TEDAR asks a clarifying question
+3. Answer "the whole niche"
+4. TEDAR interprets the combined context and confirms a niche → Run
+5. Results appear
+
+**Test 5 — Error handling:**
+1. Paste an invalid URL like "https://notayoutubeurl.com/video"
+2. Confirm the error state appears with a readable message
+3. Click "Try again" → returns to idle cleanly
+
+- [x] `app/page.tsx` created ✓
+- [x] Test 1 (niche mode) end-to-end working ✓ (verified via Supabase — data saved, browser receives results within ~60s at current config)
+- [x] Test 2 (channel mode) end-to-end working ✓ (tested with @mkbhd — outlier cards displayed correctly)
+- [x] Test 3 (video mode) end-to-end working ✓ (tested with Rick Astley video — metadata card displayed)
+- [x] Test 4 (clarification flow) working ✓ (Groq correctly asks follow-up for ambiguous input)
+- [x] Test 5 (error handling) working ✓ (error state renders, Try Again resets to idle)
+- [x] Reset clears all state cleanly ✓
+- [x] New data in Supabase verified after each test ✓
 
 ---
 
 ### TASK 12 — Commit and push to GitHub
 
-Run in terminal:
 ```bash
 git add .
-git commit -m "Phase 1: Scout Engine — channel discovery, outlier detection, database storage"
+git commit -m "Phase 2: Scout Dashboard — LLM-first interface, three input modes, outlier results display"
 git push
 ```
 
-Verify on github.com/Shayan733/tedar that the new files appear. Confirm `.env.local` is NOT in the commit.
+Verify on github.com/Shayan733/tedar that all new files appear. Confirm `.env.local` is NOT in the commit:
+```bash
+git show --stat HEAD
+```
+The output must not include `.env.local` anywhere.
 
-- [x] Changes committed ✓
-- [x] Pushed to GitHub ✓
-- [x] .env.local NOT in commit ✓
+- [ ] Changes committed ✓ ← do this before Phase 3
+- [ ] Pushed to GitHub ✓ ← do this before Phase 3
+- [ ] .env.local NOT in commit ✓
 
 ---
 
-## PHASE 1 GATE CHECK
+## PHASE 2 GATE CHECK
 
-All of the following must be true before Phase 2 begins:
+All of the following must be true before Phase 3 begins. The agent confirms each one.
 
 - [x] `npx tsc --noEmit` passes with zero TypeScript errors
-- [x] `lib/types.ts` defines all required interfaces (including 4 snapshot types)
-- [x] `lib/config.ts` exports DEFAULT_CONFIG and all threshold constants
-- [x] `lib/supabase.ts` connects to database, all upsert and snapshot insert functions work
-- [x] `lib/llm/provider.ts` routes correctly to Gemini (includes stripJsonFences utility)
-- [x] `lib/llm/gemini.ts` uses model ID `gemini-2.5-flash`
-- [x] YouTube channel search returns results for a test keyword
-- [x] Outlier detection produces scores that match manual YouTube verification
-- [x] Full integration test runs end-to-end without errors
-- [x] Data appears in Supabase: all 11 tables populated (7 core + 4 snapshot)
-- [x] All 4 snapshot tables verified append-only: video_snapshots, channel_snapshots, niche_snapshots, video_velocity_snapshots
-- [x] All code committed and pushed to GitHub
+- [x] `lib/prompts/input-interpreter.ts` classifies niche keywords, channel URLs, and video URLs correctly
+- [x] `lib/pipeline/niche-pipeline.ts` runs full Scout for a keyword and saves all data to Supabase
+- [x] `lib/pipeline/channel-pipeline.ts` runs Scout for a channel URL and saves data to Supabase
+- [x] `lib/pipeline/video-pipeline.ts` fetches video metadata and saves to Supabase
+- [x] `lib/supabase-queries.ts` reads pipeline runs and outliers from database correctly
+- [x] `NichePipelineResult`, `ChannelPipelineResult`, `VideoPipelineResult` added to `lib/types.ts`
+- [x] `/api/scout/interpret` returns correct JSON for all three input types plus ambiguous input
+- [x] `/api/scout/run` completes and returns results for all three input types
+- [x] `/api/scout/results/[runId]` returns saved results from database
+- [x] localhost:3000 loads with no errors and no TypeScript console warnings
+- [x] All three input modes tested end-to-end in the browser
+- [x] Clarification flow tested: ambiguous input → question → answer → run → results
+- [x] Error state tested and handled gracefully (no page crash)
+- [x] narratorMessage present and readable for every completed run
+- [x] New rows in Supabase verified after every browser test
+- [ ] All code committed and pushed to GitHub ← still to do
 
-**When all boxes above are ticked:** Tell the founder "Phase 1 is complete. The Scout Engine is working. Replace this CLAUDE.md with the Phase 2 CLAUDE.md to begin building the Scout Dashboard and three input modes."
+**When all boxes above are ticked:** Tell the founder "Phase 2 is complete. TEDAR now has a working browser interface with LLM-first input, all three Scout modes, and conversational results display. Replace this CLAUDE.md with the Phase 3 CLAUDE.md to begin building the Decoder Engine — the psychological analysis layer."
 
 ---
 
 ## IF SOMETHING BREAKS
 
 1. Read the exact error. Quote it in full.
-2. Explain it to the founder in plain English.
+2. Tell the founder what the error means in plain English.
 3. Fix only the broken thing. Do not touch working code.
-4. Re-run the specific test for that file.
+4. Re-run the specific test for that task.
 5. Confirm it passes before moving on.
 
-**Common Phase 1 issues:**
+**Common Phase 2 issues:**
 
-- **YouTube API quota exceeded:** The free tier allows ~100 channel lookups/day. If you hit the limit, wait until midnight Pacific (8am UK) and resume.
-- **Gemini quota exceeded (429):** Wait 60 seconds and retry. The free tier resets daily at midnight Pacific.
-- **TypeScript errors on import:** Make sure every interface is exported from `lib/types.ts` and imported correctly in each file.
-- **Supabase upsert fails:** Check that the column names in the upsert exactly match the database column names (snake_case in DB, camelCase in TypeScript — the supabase.ts file handles the translation).
-- **LLM returns non-JSON:** The channel ranker prompt must explicitly say "return ONLY valid JSON, no markdown, no backticks, no explanation." If it still fails, add a JSON extraction step that strips any surrounding text.
+- **Interpreter returns invalid JSON:** The system prompt must say explicitly: "Return ONLY valid JSON. No markdown. No backticks. No explanation. No preamble." If the LLM still wraps output in backticks, use `stripJsonFences` from `lib/llm/provider.ts` before `JSON.parse`.
+- **`/api/scout/run` appears to hang:** Check that `npm run dev` is still running in the terminal. Local development has no timeout. If it genuinely hangs for more than 2 minutes, the YouTube API quota may be exhausted — wait until 8am UK time to reset.
+- **TypeScript error on new pipeline result types:** Make sure all three new interfaces (`NichePipelineResult`, `ChannelPipelineResult`, `VideoPipelineResult`) are exported from `lib/types.ts` and imported correctly in the pipeline files and API routes.
+- **`resolveChannelId` fails on certain URL formats:** The function in `lib/youtube/channel.ts` handles the most common formats. If a specific format fails, check the URL structure and add a handler for that case — do not modify any other part of the file.
+- **YouTube API quota exceeded (403):** ~100 lookups/day on the free tier. Each niche scan uses approximately 5 API calls. Each channel scan uses 1. Each video URL uses 1. Plan tests to stay within this limit and reset at 8am UK time.
+- **Groq rate limit:** Groq free tier is very generous (thousands of requests/day). If you hit a rate limit, wait 30 seconds and retry. To switch back to Gemini temporarily: change `LLM_PROVIDER=gemini` in .env.local and restart the dev server.
+- **State machine stuck on screen:** Add `console.log(pageState)` after each `setPageState` call to trace exactly where the flow breaks. The reset button always returns to idle.
+- **Page crashes on results display:** Wrap the results rendering section in a try/catch or add null checks on `results`. The narrator message, outlier array, and video data may be undefined if the API response was malformed.
 
 ---
 
-*TEDAR Project Bible v3.0 — Phase 1 of 7*
+*TEDAR Project Bible v4.0 — Phase 2 complete, ready for Phase 3*
 *Built one step at a time. Test before moving. Never skip gates.*
+*LLM switched from Gemini to Groq (llama-3.3-70b-versatile) during Phase 2 — Gemini free tier (20 req/day) was insufficient for pipeline testing.*

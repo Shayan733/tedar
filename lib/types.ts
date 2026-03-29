@@ -147,3 +147,32 @@ export interface VideoVelocitySnapshotData {
   commentCount?: number;
   outlierScore?: number;
 }
+
+export interface NichePipelineResult {
+  runId: string;
+  inputType: 'niche';
+  inputValue: string;
+  channelsScanned: number;
+  videosScanned: number;
+  outliersFound: number;
+  outliers: OutlierResult[];
+  topChannels: RankedChannel[];
+}
+
+export interface ChannelPipelineResult {
+  runId: string;
+  inputType: 'channel';
+  inputValue: string;
+  channelName: string;
+  videosScanned: number;
+  outliersFound: number;
+  outliers: OutlierResult[];
+}
+
+export interface VideoPipelineResult {
+  runId: string;
+  inputType: 'video';
+  inputValue: string;
+  video: VideoData;
+  decoderAvailable: false;
+}

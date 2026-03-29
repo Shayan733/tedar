@@ -4,6 +4,7 @@
 
 import { LLMResponse } from '../types';
 import { generateWithGemini } from './gemini';
+import { generateWithGroq } from './groq';
 
 // Strips markdown code fences that LLMs sometimes add despite being told not to.
 // e.g. ```json\n[...]\n``` → [...]
@@ -25,13 +26,15 @@ export async function generateLLMResponse(
   void options;
 
   switch (provider) {
+    case 'groq':
+      return generateWithGroq(systemPrompt, userMessage);
     case 'gemini':
       return generateWithGemini(systemPrompt, userMessage);
     case 'claude':
-      throw new Error('Claude provider not yet implemented. Set LLM_PROVIDER=gemini in .env.local');
+      throw new Error('Claude provider not yet implemented.');
     case 'openai':
-      throw new Error('OpenAI provider not yet implemented. Set LLM_PROVIDER=gemini in .env.local');
+      throw new Error('OpenAI provider not yet implemented.');
     default:
-      throw new Error(`Unknown LLM provider: "${provider}". Valid options: gemini, claude, openai`);
+      throw new Error(`Unknown LLM provider: "${provider}". Valid options: groq, gemini`);
   }
 }
