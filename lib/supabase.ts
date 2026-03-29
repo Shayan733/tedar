@@ -2,7 +2,10 @@
 // All database operations go through this file. Never import supabase-js elsewhere.
 
 import { createClient } from '@supabase/supabase-js';
-import { NicheData, ChannelData, VideoData, VideoSnapshotData, PipelineRun } from './types';
+import {
+  NicheData, ChannelData, VideoData, PipelineRun,
+  VideoSnapshotData, ChannelSnapshotData, NicheSnapshotData, VideoVelocitySnapshotData,
+} from './types';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -26,6 +29,20 @@ export async function upsertNiche(niche: NicheData): Promise<string> {
   return data.id as string;
 }
 
+export async function insertNicheSnapshot(snapshot: NicheSnapshotData): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('niche_snapshots')
+    .insert({
+      niche_id: snapshot.nicheId,
+      scanned_at: snapshot.scannedAt,
+      channel_count: snapshot.channelCount,
+      avg_outlier_score: snapshot.avgOutlierScore,
+      total_videos_scanned: snapshot.totalVideosScanned,
+      total_outliers_found: snapshot.totalOutliersFound,
+    });
+  if (error) throw new Error(`Failed to insert niche snapshot for ${snapshot.nicheId}: ${error.message}`);
+}
+
 // ── Channels ──────────────────────────────────────────────────────────────────
 
 export async function upsertChannel(channel: ChannelData): Promise<string> {
@@ -46,7 +63,32 @@ export async function upsertChannel(channel: ChannelData): Promise<string> {
     .select('id')
     .single();
   if (error) throw new Error(`Failed to upsert channel "${channel.channelName}": ${error.message}`);
-  return data.id as string;
+
+  const channelId = data.id as string;
+  await insertChannelSnapshot({
+    channelId,
+    scannedAt: new Date().toISOString(),
+    subscriberCount: channel.subscriberCount,
+    avgViews: channel.avgViews,
+    totalVideoCount: channel.totalVideoCount,
+    relevanceScore: channel.relevanceScore !== undefined ? Math.min(channel.relevanceScore, 99.99) : undefined,
+  });
+
+  return channelId;
+}
+
+export async function insertChannelSnapshot(snapshot: ChannelSnapshotData): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('channel_snapshots')
+    .insert({
+      channel_id: snapshot.channelId,
+      scanned_at: snapshot.scannedAt,
+      subscriber_count: snapshot.subscriberCount,
+      avg_views: snapshot.avgViews,
+      total_video_count: snapshot.totalVideoCount,
+      relevance_score: snapshot.relevanceScore,
+    });
+  if (error) throw new Error(`Failed to insert channel snapshot for ${snapshot.channelId}: ${error.message}`);
 }
 
 // ── Videos ────────────────────────────────────────────────────────────────────
@@ -65,6 +107,21 @@ export async function insertVideoSnapshot(snapshot: VideoSnapshotData): Promise<
       channel_avg_views_at_scan: snapshot.channelAvgViewsAtScan,
     });
   if (error) throw new Error(`Failed to insert video snapshot for ${snapshot.videoId}: ${error.message}`);
+}
+
+export async function insertVideoVelocitySnapshot(snapshot: VideoVelocitySnapshotData): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('video_velocity_snapshots')
+    .insert({
+      video_id: snapshot.videoId,
+      recorded_at: snapshot.recordedAt,
+      interval_label: snapshot.intervalLabel,
+      view_count: snapshot.viewCount,
+      like_count: snapshot.likeCount,
+      comment_count: snapshot.commentCount,
+      outlier_score: snapshot.outlierScore,
+    });
+  if (error) throw new Error(`Failed to insert velocity snapshot for ${snapshot.videoId}: ${error.message}`);
 }
 
 export async function upsertVideo(video: VideoData): Promise<string> {
@@ -93,14 +150,29 @@ export async function upsertVideo(video: VideoData): Promise<string> {
   if (error) throw new Error(`Failed to upsert video "${video.title}": ${error.message}`);
 
   const videoId = data.id as string;
+  const scannedAt = new Date().toISOString();
+
+  // Append-only snapshot — full history of every scan, never overwritten
   await insertVideoSnapshot({
     videoId,
-    scannedAt: new Date().toISOString(),
+    scannedAt,
     viewCount: video.viewCount,
     likeCount: video.likeCount,
     commentCount: video.commentCount,
     outlierScore: video.outlierScore,
     outlierCategory: video.outlierCategory,
+  });
+
+  // Velocity snapshot — records view count at this moment with 'latest' label
+  // Phase 3 will add scheduled snapshots at 24h, 48h, 7d, 30d after publish
+  await insertVideoVelocitySnapshot({
+    videoId,
+    recordedAt: scannedAt,
+    intervalLabel: 'latest',
+    viewCount: video.viewCount,
+    likeCount: video.likeCount,
+    commentCount: video.commentCount,
+    outlierScore: video.outlierScore,
   });
 
   return videoId;

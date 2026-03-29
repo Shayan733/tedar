@@ -117,3 +117,33 @@ export interface VideoSnapshotData {
   outlierCategory?: OutlierCategory;
   channelAvgViewsAtScan?: number;
 }
+
+export interface ChannelSnapshotData {
+  channelId: string;
+  scannedAt: string;
+  subscriberCount?: number;
+  avgViews?: number;
+  totalVideoCount?: number;
+  relevanceScore?: number;
+}
+
+export interface NicheSnapshotData {
+  nicheId: string;
+  scannedAt: string;
+  channelCount: number;
+  avgOutlierScore?: number;
+  totalVideosScanned: number;
+  totalOutliersFound: number;
+}
+
+export type VelocityInterval = '24h' | '48h' | '7d' | '30d' | 'latest';
+
+export interface VideoVelocitySnapshotData {
+  videoId: string;
+  recordedAt: string;
+  intervalLabel: VelocityInterval;
+  viewCount: number;
+  likeCount?: number;
+  commentCount?: number;
+  outlierScore?: number;
+}

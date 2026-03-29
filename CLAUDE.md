@@ -26,7 +26,8 @@ Read this before doing anything. This is what already exists. Do not re-create, 
 - ✅ All dependencies installed (@google/generative-ai, @supabase/supabase-js, googleapis, youtube-transcript)
 - ✅ shadcn/ui components installed (button, card, input, tabs, badge, skeleton, alert, progress)
 - ✅ .env.local with all 5 real API keys — Gemini, YouTube, Supabase URL, anon key, service role key — all tested and confirmed working
-- ✅ All 7 Supabase tables live and verified: niches, channels, videos, transcripts, analyses, knowledge_entries, pipeline_runs
+- ✅ All 7 original Supabase tables live and verified: niches, channels, videos, transcripts, analyses, knowledge_entries, pipeline_runs
+- ✅ 4 snapshot tables added post-Phase 1: video_snapshots, channel_snapshots, niche_snapshots, video_velocity_snapshots — all append-only, never overwritten
 - ✅ pgvector extension enabled in Supabase (project region: West EU / Ireland)
 - ✅ Complete folder structure and all placeholder files created
 - ✅ Git initialised, connected to GitHub, code pushed and verified
@@ -42,8 +43,13 @@ Read this before doing anything. This is what already exists. Do not re-create, 
 
 **Database:**
 - Supabase PostgreSQL, West EU region
-- All 7 tables confirmed with correct schema
+- 11 tables total (7 original + 4 snapshot tables)
 - pgvector enabled for future RAG capability (knowledge_entries table ready but empty — populated post-MVP)
+- Snapshot tables are append-only (insert only, never update/delete) — full traceable history of every scan
+- video_snapshots: view count, likes, comments, outlier score per scan
+- channel_snapshots: subscriber count, avg_views, relevance score per scan
+- niche_snapshots: channel count, avg outlier score, total videos/outliers per scan
+- video_velocity_snapshots: view count at fixed intervals (24h, 48h, 7d, 30d, latest) after publish
 
 ---
 
@@ -54,11 +60,11 @@ Phase 1 builds the Scout Engine — the system that finds YouTube channels for a
 At the end of this phase, you will be able to type a niche keyword (e.g. "fitness motivation") and get back a ranked list of outlier videos — videos that are performing significantly better than their channel's average — all stored in Supabase.
 
 **Files built in this phase (in order):**
-1. `lib/types.ts` — all TypeScript type definitions
+1. `lib/types.ts` — all TypeScript type definitions (includes snapshot types)
 2. `lib/config.ts` — configurable settings and thresholds
-3. `lib/supabase.ts` — database connection and queries
+3. `lib/supabase.ts` — database connection, queries, and all snapshot insert functions
 4. `lib/llm/gemini.ts` — Gemini-specific LLM implementation
-5. `lib/llm/provider.ts` — model-agnostic LLM wrapper
+5. `lib/llm/provider.ts` — model-agnostic LLM wrapper (includes stripJsonFences utility)
 6. `lib/prompts/channel-ranker.ts` — LLM prompt for ranking channels
 7. `lib/youtube/search.ts` — YouTube channel search by keyword
 8. `lib/youtube/channel.ts` — fetch channel videos
@@ -67,6 +73,13 @@ At the end of this phase, you will be able to type a niche keyword (e.g. "fitnes
 11. `scripts/test-search.ts` — test YouTube search
 12. `scripts/test-channel.ts` — test channel video fetching
 13. `scripts/test-outlier.ts` — test full outlier detection
+14. `scripts/test-scout-full.ts` — full end-to-end integration test
+
+**Snapshot functions in lib/supabase.ts (all called automatically — no manual invocation needed):**
+- `insertVideoSnapshot` — called inside every `upsertVideo`
+- `insertVideoVelocitySnapshot` — called inside every `upsertVideo` with label 'latest'
+- `insertChannelSnapshot` — called inside every `upsertChannel`
+- `insertNicheSnapshot` — called manually at end of each niche pipeline run
 
 **LLM required:** Yes — for channel ranking only. Outlier detection is pure maths.
 
@@ -867,9 +880,9 @@ git push
 
 Verify on github.com/Shayan733/tedar that the new files appear. Confirm `.env.local` is NOT in the commit.
 
-- [ ] Changes committed ✓
-- [ ] Pushed to GitHub ✓
-- [ ] .env.local NOT in commit ✓
+- [x] Changes committed ✓
+- [x] Pushed to GitHub ✓
+- [x] .env.local NOT in commit ✓
 
 ---
 
