@@ -85,6 +85,8 @@ export interface PipelineConfig {
   maxChannelsToScan: number;
   maxVideosPerChannel: number;
   maxOutliersToAnalyse: number;
+  trendMode: boolean;       // true = recent 30 days, lower threshold. false = full baseline (100 videos, 365 days)
+  maxDaysOld?: number;      // only include videos published within this many days (undefined = no filter)
 }
 
 export interface PipelineRun {

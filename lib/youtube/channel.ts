@@ -1,7 +1,7 @@
 // TEDAR — Fetch videos from a YouTube channel
 // Step 3 of the Scout: pull the most recent N videos from a channel.
 
-import { google } from 'googleapis';
+import { google, youtube_v3 } from 'googleapis';
 import { VideoData } from '../types';
 
 function getYouTubeClient() {
@@ -50,25 +50,46 @@ export async function getChannelVideos(
   if (!uploadsPlaylistId) throw new Error(`No uploads playlist for channel: ${channelId}`);
 
   // Step 2: get video IDs from the uploads playlist
-  const playlistResponse = await youtube.playlistItems.list({
-    part: ['contentDetails'],
-    playlistId: uploadsPlaylistId,
-    maxResults: Math.min(maxResults, 50),
-  });
+  // YouTube API returns max 50 per request — paginate to collect up to maxResults
+  const videoIds: string[] = [];
+  let pageToken: string | null | undefined = undefined;
 
-  const videoIds = (playlistResponse.data.items ?? [])
-    .map((item) => item.contentDetails?.videoId)
-    .filter((id): id is string => !!id);
+  while (videoIds.length < maxResults) {
+    const remaining = maxResults - videoIds.length;
+    const playlistResponse: youtube_v3.Schema$PlaylistItemListResponse = (
+      await youtube.playlistItems.list({
+        part: ['contentDetails'],
+        playlistId: uploadsPlaylistId,
+        maxResults: Math.min(remaining, 50),
+        ...(pageToken ? { pageToken } : {}),
+      })
+    ).data;
+
+    const pageIds = (playlistResponse.items ?? [])
+      .map((item: youtube_v3.Schema$PlaylistItem) => item.contentDetails?.videoId)
+      .filter((id: string | null | undefined): id is string => !!id);
+
+    videoIds.push(...pageIds);
+
+    const nextPage = playlistResponse.nextPageToken;
+    if (!nextPage || pageIds.length === 0) break;
+    pageToken = nextPage;
+  }
 
   if (videoIds.length === 0) return [];
 
-  // Step 3: fetch full metadata for each video
-  const videosResponse = await youtube.videos.list({
-    part: ['snippet', 'statistics', 'contentDetails'],
-    id: videoIds,
-  });
+  // Step 3: fetch full metadata in batches of 50 (YouTube videos.list limit)
+  const allItems: youtube_v3.Schema$Video[] = [];
+  for (let i = 0; i < videoIds.length; i += 50) {
+    const batch = videoIds.slice(i, i + 50);
+    const videosResponse = await youtube.videos.list({
+      part: ['snippet', 'statistics', 'contentDetails'],
+      id: batch,
+    });
+    allItems.push(...(videosResponse.data.items ?? []));
+  }
 
-  return (videosResponse.data.items ?? []).map((item) => {
+  return allItems.map((item: youtube_v3.Schema$Video) => {
     const stats = item.statistics ?? {};
     const snippet = item.snippet ?? {};
 

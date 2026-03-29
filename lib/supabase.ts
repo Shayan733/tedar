@@ -147,7 +147,10 @@ export async function upsertVideo(video: VideoData): Promise<string> {
     }, { onConflict: 'youtube_video_id' })
     .select('id')
     .single();
-  if (error) throw new Error(`Failed to upsert video "${video.title}": ${error.message}`);
+  if (error) {
+    console.error('upsertVideo failed:', error);
+    throw new Error(`Failed to upsert video "${video.title}": ${error.message}`);
+  }
 
   const videoId = data.id as string;
   const scannedAt = new Date().toISOString();
@@ -198,7 +201,10 @@ export async function createPipelineRun(
     })
     .select('id')
     .single();
-  if (error) throw new Error(`Failed to create pipeline run: ${error.message}`);
+  if (error) {
+    console.error('createPipelineRun failed:', error);
+    throw new Error(`Failed to create pipeline run: ${error.message}`);
+  }
   return data.id as string;
 }
 

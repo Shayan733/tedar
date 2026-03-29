@@ -32,15 +32,15 @@ Read this before doing anything. This is what already exists. Do not re-create, 
 - ✅ Git connected to GitHub, Phase 1 committed and pushed
 
 **Phase 1 files confirmed working — do not rewrite any of these:**
-- ✅ `lib/types.ts` — all TypeScript interfaces (now also includes NichePipelineResult, ChannelPipelineResult, VideoPipelineResult)
-- ✅ `lib/config.ts` — all configurable thresholds (maxChannelsToScan: 5, maxVideosPerChannel: 30 — tuned for browser timeout)
+- ✅ `lib/types.ts` — all TypeScript interfaces (includes NichePipelineResult, ChannelPipelineResult, VideoPipelineResult; PipelineConfig now includes trendMode: boolean and maxDaysOld?: number)
+- ✅ `lib/config.ts` — all configurable thresholds (maxChannelsToScan: 5, maxVideosPerChannel: 100 with pagination, trendMode flag, TREND_MODE_CONFIG and BASELINE_MODE_CONFIG exported)
 - ✅ `lib/supabase.ts` — database connection + all upsert and snapshot insert functions
 - ✅ `lib/llm/gemini.ts` — Gemini 2.5 Flash implementation (kept, not active)
 - ✅ `lib/llm/groq.ts` — Groq llama-3.3-70b-versatile implementation (ACTIVE — replaces Gemini)
 - ✅ `lib/llm/provider.ts` — model-agnostic LLM wrapper with stripJsonFences utility (routes to Groq)
 - ✅ `lib/prompts/channel-ranker.ts` — LLM prompt for ranking channels by niche relevance
 - ✅ `lib/youtube/search.ts` — YouTube channel search by keyword
-- ✅ `lib/youtube/channel.ts` — fetch channel videos and resolve channel ID
+- ✅ `lib/youtube/channel.ts` — fetch channel videos and resolve channel ID (paginated: 2 × 50 YouTube API calls to collect up to 100 videos)
 - ✅ `lib/youtube/metadata.ts` — fetch single video metadata
 - ✅ `lib/youtube/outlier.ts` — outlier score calculation (trimmed mean baseline)
 - ✅ Full integration test passed: keyword → 50 channels → LLM ranked top 20 → channels scanned → videos stored → outliers detected and scored → all data in Supabase
@@ -64,20 +64,20 @@ Read this before doing anything. This is what already exists. Do not re-create, 
 - Groq free tier: thousands of requests/day, no daily quota issues
 - Env var: `LLM_PROVIDER=groq`, key: `GROQ_API_KEY`
 - Gemini kept as fallback: `GEMINI_API_KEY` still in .env.local, switch by changing `LLM_PROVIDER=gemini`
-- Gemini free tier was only 20 requests/day — caused timeouts during Phase 2 testing, replaced with Groq
+- Gemini free tier is only 20 requests/day (not 250 — confirmed empirically), caused timeouts during Phase 2 testing, replaced with Groq
 
 **YouTube API:**
 - Free tier: ~100 channel lookups/day, resets midnight Pacific (8am UK time)
-- Niche scan (5 channels × 30 videos) uses ~6 API calls — well within daily limit
-- Niche scan was originally 20 channels × 50 videos — caused 5-minute browser timeouts, tuned down
+- Niche scan (5 channels × 100 videos) uses ~12 API calls — well within daily limit
+- Niche scan was originally 20 channels × 50 videos — caused 5-minute browser timeouts, tuned to 5 channels × 100 videos (pagination added for accuracy, channel count kept low for browser safety)
 
 **Database:**
 - Supabase PostgreSQL, West EU / Ireland region
 - 11 tables total (7 core + 4 snapshot tables, all append-only)
 
 **Known behaviour and limits:**
-- Niche mode: scans top 5 channels, 30 videos each — completes in ~60 seconds in the browser
-- Channel mode: scans 1 channel, 30 videos — completes in ~15 seconds
+- Niche mode: scans top 5 channels, 100 videos each — completes in ~90 seconds in the browser
+- Channel mode: scans 1 channel, 100 videos — completes in ~20 seconds
 - Video mode: fetches 1 video's metadata — completes in ~3 seconds
 - Outlier threshold: 3.0x (video must have 3× channel average views to be flagged)
 - All these numbers live in `lib/config.ts` — change them there, nowhere else
@@ -923,9 +923,9 @@ git show --stat HEAD
 ```
 The output must not include `.env.local` anywhere.
 
-- [ ] Changes committed ✓ ← do this before Phase 3
-- [ ] Pushed to GitHub ✓ ← do this before Phase 3
-- [ ] .env.local NOT in commit ✓
+- [x] Changes committed ✓
+- [x] Pushed to GitHub ✓
+- [x] .env.local NOT in commit ✓
 
 ---
 
@@ -949,7 +949,7 @@ All of the following must be true before Phase 3 begins. The agent confirms each
 - [x] Error state tested and handled gracefully (no page crash)
 - [x] narratorMessage present and readable for every completed run
 - [x] New rows in Supabase verified after every browser test
-- [ ] All code committed and pushed to GitHub ← still to do
+- [x] All code committed and pushed to GitHub
 
 **When all boxes above are ticked:** Tell the founder "Phase 2 is complete. TEDAR now has a working browser interface with LLM-first input, all three Scout modes, and conversational results display. Replace this CLAUDE.md with the Phase 3 CLAUDE.md to begin building the Decoder Engine — the psychological analysis layer."
 
@@ -976,6 +976,7 @@ All of the following must be true before Phase 3 begins. The agent confirms each
 
 ---
 
-*TEDAR Project Bible v4.0 — Phase 2 complete, ready for Phase 3*
+*TEDAR Project Bible v4.1 — Phase 2 complete, pre-Phase 3 changes applied, ready for Phase 3*
 *Built one step at a time. Test before moving. Never skip gates.*
 *LLM switched from Gemini to Groq (llama-3.3-70b-versatile) during Phase 2 — Gemini free tier (20 req/day) was insufficient for pipeline testing.*
+*Pre-Phase 3 changes (applied before Phase 3 begins): video fetch increased from 30 → 100 with pagination, trendMode and maxDaysOld added to PipelineConfig, TREND_MODE_CONFIG and BASELINE_MODE_CONFIG added to config.ts, Gemini quota comment corrected (20/day not 250).*
