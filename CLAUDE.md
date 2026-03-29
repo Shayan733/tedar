@@ -859,8 +859,12 @@ Run with: `npx ts-node scripts/test-scout-full.ts`
 **After running:** Go to Supabase dashboard → Table Editor → check:
 - `niches` table: 1 row for "personal finance"
 - `channels` table: 3 rows (top 3 channels)
-- `videos` table: ~150 rows (50 per channel) — every row has `has_transcript = false` by default. This is correct. Transcript fetching is Phase 3, not Phase 1. The field exists so Phase 3 can update it without schema changes.
+- `videos` table: ~150 rows (50 per channel) — every row has `has_transcript = false` by default. This is correct. Transcript fetching is Phase 3.
 - `pipeline_runs` table: 1 row with status "completed"
+- `video_snapshots` table: ~150 rows (one per video per scan — append only, never overwritten)
+- `channel_snapshots` table: 3 rows (one per channel per scan — append only)
+- `niche_snapshots` table: 1 row (one per niche per scan — append only)
+- `video_velocity_snapshots` table: ~150 rows (one per video with label "latest" — future scans add 24h, 48h, 7d, 30d rows)
 
 - [x] Full integration test script created ✓
 - [x] Test runs without errors ✓
@@ -890,17 +894,18 @@ Verify on github.com/Shayan733/tedar that the new files appear. Confirm `.env.lo
 
 All of the following must be true before Phase 2 begins:
 
-- [ ] `npx tsc --noEmit` passes with zero TypeScript errors
-- [ ] `lib/types.ts` defines all required interfaces
-- [ ] `lib/config.ts` exports DEFAULT_CONFIG and all threshold constants
-- [ ] `lib/supabase.ts` connects to database and upsert functions work
-- [ ] `lib/llm/provider.ts` routes correctly to Gemini
-- [ ] `lib/llm/gemini.ts` uses model ID `gemini-2.5-flash` (verified in code)
-- [ ] YouTube channel search returns results for a test keyword
-- [ ] Outlier detection produces scores that match manual YouTube verification
-- [ ] Full integration test runs end-to-end without errors
-- [ ] Data appears in Supabase: niches, channels, videos, pipeline_runs tables all have rows
-- [ ] All code committed and pushed to GitHub
+- [x] `npx tsc --noEmit` passes with zero TypeScript errors
+- [x] `lib/types.ts` defines all required interfaces (including 4 snapshot types)
+- [x] `lib/config.ts` exports DEFAULT_CONFIG and all threshold constants
+- [x] `lib/supabase.ts` connects to database, all upsert and snapshot insert functions work
+- [x] `lib/llm/provider.ts` routes correctly to Gemini (includes stripJsonFences utility)
+- [x] `lib/llm/gemini.ts` uses model ID `gemini-2.5-flash`
+- [x] YouTube channel search returns results for a test keyword
+- [x] Outlier detection produces scores that match manual YouTube verification
+- [x] Full integration test runs end-to-end without errors
+- [x] Data appears in Supabase: all 11 tables populated (7 core + 4 snapshot)
+- [x] All 4 snapshot tables verified append-only: video_snapshots, channel_snapshots, niche_snapshots, video_velocity_snapshots
+- [x] All code committed and pushed to GitHub
 
 **When all boxes above are ticked:** Tell the founder "Phase 1 is complete. The Scout Engine is working. Replace this CLAUDE.md with the Phase 2 CLAUDE.md to begin building the Scout Dashboard and three input modes."
 
