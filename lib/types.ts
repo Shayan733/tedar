@@ -178,3 +178,86 @@ export interface VideoPipelineResult {
   video: VideoData;
   decoderAvailable: false;
 }
+
+// ─── Phase 3: Decoder Engine Types ───────────────────────────────────────────
+
+export interface DimensionScores {
+  system1Activation: number;
+  informationGap: number;
+  steppsSocialCurrency: number;
+  steppsTriggers: number;
+  steppsEmotion: number;
+  steppsPublic: number;
+  steppsPracticalValue: number;
+  steppsStories: number;
+  attentionArchitecture: number;
+  lossAversion: number;
+}
+
+export interface KeyMoment {
+  timestamp: string;
+  transcriptQuote: string;
+  mechanism: string;
+  dimensionsActivated: string[];
+}
+
+export interface PsychologicalFormula {
+  primaryMechanism: string;
+  mechanismDescription: string;
+  supportingMechanisms: string[];
+  interactionEffects: string;
+  keyMoments: KeyMoment[];
+}
+
+export interface EngagementScore {
+  overall: number;
+  confidence: 'low' | 'medium' | 'high';
+  dimensions: DimensionScores;
+  interactionNotes: string;
+}
+
+export interface ReplicationBrief {
+  hookStrategy: string;
+  contentStructure: string;
+  priorityTriggers: string[];
+  avoidanceNotes: string;
+}
+
+export interface ScriptOutline {
+  hookBeat: string;
+  evidenceBeats: string[];
+  payoffBeat: string;
+  closeBeat: string;
+}
+
+export interface DecoderResult {
+  psychologicalFormula: PsychologicalFormula;
+  engagementScore: EngagementScore;
+  replicationBrief: ReplicationBrief;
+  scriptOutline: ScriptOutline;
+}
+
+export interface TranscriptData {
+  id?: string;
+  videoId: string;
+  fullText: string;
+  wordCount: number;
+  language: string;
+  createdAt?: string;
+}
+
+export interface AnalysisRecord {
+  id?: string;
+  videoId: string;
+  analysisType: 'decode' | 'build';
+  llmProvider: string;
+  llmModel: string;
+  promptVersion: string;
+  result: DecoderResult;
+  overallScore: number;
+  dimensionScores: DimensionScores;
+  processingTimeMs?: number;
+  tokensInput?: number;
+  tokensOutput?: number;
+  createdAt?: string;
+}

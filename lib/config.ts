@@ -44,9 +44,9 @@ export const OUTLIER_THRESHOLDS = {
   // above 10.0 = viral
 };
 
-export const MAX_TRANSCRIPT_WORDS = 15000;
+export const MAX_TRANSCRIPT_WORDS = 2500; // ~3,300 tokens — fits within Groq 12k TPM (system prompt ~4,400 + output 2,048 + buffer)
 export const LLM_TEMPERATURE = 0.3;
-export const LLM_MAX_TOKENS = 16384;
+export const LLM_MAX_TOKENS = 2048;
 export const YOUTUBE_MAX_RESULTS = 50;
 export const CHANNEL_BASELINE_TRIM_PERCENT = 0.05; // Exclude top 5% when calculating baseline
 

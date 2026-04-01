@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { OutlierResult, OutlierCategory } from '@/lib/types';
+import { useRouter } from 'next/navigation';
 
 interface OutlierCardProps {
   result: OutlierResult;
@@ -28,6 +29,7 @@ function formatDate(dateStr?: string): string {
 
 export function OutlierCard({ result, rank }: OutlierCardProps) {
   const { video, outlierScore, outlierCategory } = result;
+  const router = useRouter();
 
   return (
     <Card className="overflow-hidden">
@@ -60,15 +62,13 @@ export function OutlierCard({ result, rank }: OutlierCardProps) {
           <span>{formatDate(video.publishedAt)}</span>
         </div>
         <Button
-          disabled
-          variant="outline"
+          variant="default"
           size="sm"
-          className="w-full mt-2 opacity-40 cursor-not-allowed"
-          title="Psychological analysis — available in Phase 3"
+          className="w-full mt-2 bg-violet-600 hover:bg-violet-700 text-white"
+          onClick={() => router.push(`/decode/${video.youtubeVideoId}`)}
         >
           Decode this video
         </Button>
-        <p className="text-xs text-center text-gray-400">Psychological analysis — available in Phase 3</p>
       </CardContent>
     </Card>
   );
