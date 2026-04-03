@@ -19,12 +19,12 @@ export async function POST(request: NextRequest) {
     }
 
     const startTime = Date.now();
-    const { result, cached } = await decodeVideo(videoUrl, { forceRefresh });
+    const { result, cached, analysisId } = await decodeVideo(videoUrl, { forceRefresh });
     const processingTimeMs = Date.now() - startTime;
 
     return NextResponse.json({
       data: result,
-      meta: { processingTimeMs, cached },
+      meta: { processingTimeMs, cached, analysisId },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'An unexpected error occurred';

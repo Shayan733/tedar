@@ -16,14 +16,15 @@ function getClient(): Groq {
 
 export async function generateWithGroq(
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  options?: { temperature?: number; maxTokens?: number }
 ): Promise<LLMResponse> {
   const client = getClient();
 
   const completion = await client.chat.completions.create({
     model: MODEL_ID,
-    temperature: LLM_TEMPERATURE,
-    max_tokens: LLM_MAX_TOKENS,
+    temperature: options?.temperature ?? LLM_TEMPERATURE,
+    max_tokens: options?.maxTokens ?? LLM_MAX_TOKENS,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userMessage },

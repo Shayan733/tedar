@@ -22,14 +22,11 @@ export async function generateLLMResponse(
 ): Promise<LLMResponse> {
   const provider = process.env.LLM_PROVIDER ?? 'gemini';
 
-  // options are accepted for future use but Gemini reads from config by default
-  void options;
-
   switch (provider) {
     case 'groq':
-      return generateWithGroq(systemPrompt, userMessage);
+      return generateWithGroq(systemPrompt, userMessage, options);
     case 'gemini':
-      return generateWithGemini(systemPrompt, userMessage);
+      return generateWithGemini(systemPrompt, userMessage, options);
     case 'claude':
       throw new Error('Claude provider not yet implemented.');
     case 'openai':

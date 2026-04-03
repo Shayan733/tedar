@@ -42,6 +42,7 @@ function validateDecoderResult(parsed: unknown): parsed is DecoderResult {
 export interface DecodeOutcome {
   result: DecoderResult;
   cached: boolean;
+  analysisId?: string;
 }
 
 export async function decodeVideo(
@@ -75,7 +76,7 @@ export async function decodeVideo(
   if (!options?.forceRefresh) {
     const cached = await getAnalysisByVideoId(supabaseVideoId, 'decode');
     if (cached) {
-      return { result: cached.result, cached: true };
+      return { result: cached.result, cached: true, analysisId: cached.id };
     }
   }
 
@@ -134,7 +135,7 @@ export async function decodeVideo(
   }
 
   // Step 11: save analysis to database
-  await upsertAnalysis({
+  const analysisId = await upsertAnalysis({
     videoId: supabaseVideoId,
     analysisType: 'decode',
     llmProvider: process.env.LLM_PROVIDER ?? 'groq',
@@ -148,5 +149,5 @@ export async function decodeVideo(
   });
 
   // Step 12: return result
-  return { result: decoderResult, cached: false };
+  return { result: decoderResult, cached: false, analysisId };
 }

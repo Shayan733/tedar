@@ -15,30 +15,13 @@ export async function upsertTranscript(transcript: TranscriptData): Promise<stri
     language: transcript.language,
   };
 
-  // Check if transcript already exists for this video
-  const { data: existing } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('transcripts')
+    .upsert(payload, { onConflict: 'video_id' })
     .select('id')
-    .eq('video_id', transcript.videoId)
-    .maybeSingle();
-
-  let id: string;
-  if (existing) {
-    const { error } = await supabaseAdmin
-      .from('transcripts')
-      .update(payload)
-      .eq('id', existing.id as string);
-    if (error) throw new Error(`Failed to update transcript for video ${transcript.videoId}: ${error.message}`);
-    id = existing.id as string;
-  } else {
-    const { data, error } = await supabaseAdmin
-      .from('transcripts')
-      .insert(payload)
-      .select('id')
-      .single();
-    if (error) throw new Error(`Failed to insert transcript for video ${transcript.videoId}: ${error.message}`);
-    id = data.id as string;
-  }
+    .single();
+  if (error) throw new Error(`Failed to upsert transcript for video ${transcript.videoId}: ${error.message}`);
+  const id = data.id as string;
 
   // Mark video as having a transcript
   await supabaseAdmin

@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { AnalysisCard } from '@/components/AnalysisCard';
 import { DecodeLoader } from './DecodeLoader';
+import { BriefBuilder } from './BriefBuilder';
 import { getVideoByYoutubeId, getAnalysisByVideoId } from '@/lib/supabase-decoder';
 import { OutlierCategory } from '@/lib/types';
 
@@ -41,6 +42,14 @@ export default async function DecodePage({
   return (
     <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
 
+      {/* Navigation */}
+      <a
+        href="/"
+        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-violet-600 transition-colors"
+      >
+        <span>&larr;</span> Back to Home
+      </a>
+
       {/* Video header */}
       <div className="space-y-3">
         {video.thumbnailUrl && (
@@ -73,7 +82,15 @@ export default async function DecodePage({
 
       {/* State 1: cached analysis — render immediately */}
       {analysis ? (
-        <AnalysisCard result={analysis.result} videoData={video} />
+        <>
+          <AnalysisCard result={analysis.result} videoData={video} />
+          {analysis.id && (
+            <>
+              <hr className="border-gray-200" />
+              <BriefBuilder analysisId={analysis.id} />
+            </>
+          )}
+        </>
       ) : (
         /* State 2: no analysis yet — client component triggers decode API */
         <DecodeLoader videoData={video} />

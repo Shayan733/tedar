@@ -13,14 +13,18 @@ function getClient(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(apiKey);
 }
 
-async function attempt(systemPrompt: string, userMessage: string): Promise<LLMResponse> {
+async function attempt(
+  systemPrompt: string,
+  userMessage: string,
+  options?: { temperature?: number; maxTokens?: number }
+): Promise<LLMResponse> {
   const genAI = getClient();
   const model = genAI.getGenerativeModel({
     model: MODEL_ID,
     systemInstruction: systemPrompt,
     generationConfig: {
-      temperature: LLM_TEMPERATURE,
-      maxOutputTokens: LLM_MAX_TOKENS,
+      temperature: options?.temperature ?? LLM_TEMPERATURE,
+      maxOutputTokens: options?.maxTokens ?? LLM_MAX_TOKENS,
     },
   });
 
@@ -34,10 +38,11 @@ async function attempt(systemPrompt: string, userMessage: string): Promise<LLMRe
 
 export async function generateWithGemini(
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  options?: { temperature?: number; maxTokens?: number }
 ): Promise<LLMResponse> {
   try {
-    return await attempt(systemPrompt, userMessage);
+    return await attempt(systemPrompt, userMessage, options);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
 
@@ -45,13 +50,13 @@ export async function generateWithGemini(
     if (message.includes('429') || message.toLowerCase().includes('quota')) {
       console.warn('Gemini rate limit hit — waiting 60s before retry...');
       await new Promise((resolve) => setTimeout(resolve, 60000));
-      return await attempt(systemPrompt, userMessage);
+      return await attempt(systemPrompt, userMessage, options);
     }
 
     // Malformed response: retry once immediately
     if (message.toLowerCase().includes('parse') || message.toLowerCase().includes('json')) {
       console.warn('Gemini parse error — retrying once...');
-      return await attempt(systemPrompt, userMessage);
+      return await attempt(systemPrompt, userMessage, options);
     }
 
     throw new Error(`Gemini error: ${message}`);

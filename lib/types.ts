@@ -261,3 +261,56 @@ export interface AnalysisRecord {
   tokensOutput?: number;
   createdAt?: string;
 }
+
+// ─── Phase 4: Builder Engine Types ────────────────────────────────────────────
+
+export interface CreatorContext {
+  channelName: string;
+  niche: string;
+  typicalContentStyle?: string;
+  targetAudience?: string;
+}
+
+export interface BuilderInstruction {
+  instruction: string;
+  reason: string;
+  domain: 'cognitive_psychology' | 'emotion_science' | 'social_behavioural' |
+          'visual_psychology' | 'audio_music' | 'performance_direction' | 'production_craft';
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export interface ProductionBrief {
+  hookStrategy: BuilderInstruction;
+  contentStructure: BuilderInstruction;
+  priorityTriggers: BuilderInstruction[];
+  avoidanceNotes: string;
+}
+
+export interface BuilderScriptOutline {
+  hookBeat: BuilderInstruction;
+  evidenceBeats: BuilderInstruction[];
+  payoffBeat: BuilderInstruction;
+  closeBeat: BuilderInstruction;
+}
+
+export interface BuilderResult {
+  creatorContext: CreatorContext;
+  productionBrief: ProductionBrief;
+  scriptOutline: BuilderScriptOutline;
+  sourceAnalysisId: string;
+  promptVersion: string;
+}
+
+export interface BriefRecord {
+  id?: string;
+  videoId: string;
+  analysisType: 'build';
+  llmProvider: string;
+  llmModel: string;
+  promptVersion: string;
+  result: BuilderResult;
+  overallScore?: number;
+  dimensionScores?: undefined;
+  processingTimeMs?: number;
+  createdAt?: string;
+}
