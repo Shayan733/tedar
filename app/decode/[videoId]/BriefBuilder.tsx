@@ -3,9 +3,15 @@
 import { useState } from 'react';
 import { BuilderCard } from '@/components/BuilderCard';
 import { BuilderResult } from '@/lib/types';
+import { readStream } from '@/lib/streaming';
 
 interface BriefBuilderProps {
   analysisId: string;
+}
+
+interface BuildResultData {
+  data: BuilderResult;
+  meta: { cached: boolean; processingTimeMs: number };
 }
 
 export function BriefBuilder({ analysisId }: BriefBuilderProps) {
@@ -14,12 +20,14 @@ export function BriefBuilder({ analysisId }: BriefBuilderProps) {
   const [briefState, setBriefState] = useState<'idle' | 'building' | 'complete' | 'error'>('idle');
   const [briefResult, setBriefResult] = useState<BuilderResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [progressMessage, setProgressMessage] = useState('');
 
   const handleBuild = async () => {
     if (!channelName.trim() || !niche.trim()) return;
 
     setBriefState('building');
     setErrorMessage('');
+    setProgressMessage('');
 
     try {
       const res = await fetch('/api/build', {
@@ -32,17 +40,23 @@ export function BriefBuilder({ analysisId }: BriefBuilderProps) {
         }),
       });
 
-      const json = (await res.json()) as {
-        data?: BuilderResult;
-        error?: string;
-      };
-
-      if (!res.ok || !json.data) {
-        throw new Error(json.error ?? 'Build failed');
-      }
-
-      setBriefResult(json.data);
-      setBriefState('complete');
+      await readStream(res, (event) => {
+        if (event.type === 'progress') {
+          setProgressMessage(event.message);
+        } else if (event.type === 'result') {
+          const d = event.data as BuildResultData;
+          if (!d.data) {
+            setErrorMessage('Build failed — no result returned.');
+            setBriefState('error');
+            return;
+          }
+          setBriefResult(d.data);
+          setBriefState('complete');
+        } else if (event.type === 'error') {
+          setErrorMessage(event.message);
+          setBriefState('error');
+        }
+      });
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : 'Build could not be completed.');
       setBriefState('error');
@@ -55,10 +69,7 @@ export function BriefBuilder({ analysisId }: BriefBuilderProps) {
         <BuilderCard result={briefResult} />
         <div className="flex items-center justify-between pt-2">
           <button
-            onClick={() => {
-              setBriefState('idle');
-              setBriefResult(null);
-            }}
+            onClick={() => { setBriefState('idle'); setBriefResult(null); }}
             className="text-sm text-gray-500 hover:text-gray-700 underline"
           >
             Build another brief
@@ -67,7 +78,7 @@ export function BriefBuilder({ analysisId }: BriefBuilderProps) {
             href="/"
             className="text-sm text-violet-600 hover:text-violet-800 font-medium"
           >
-            Decode another video &rarr;
+            Decode another video →
           </a>
         </div>
       </div>
@@ -78,8 +89,10 @@ export function BriefBuilder({ analysisId }: BriefBuilderProps) {
     return (
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-10 text-center space-y-4">
         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-violet-600 border-r-transparent" />
-        <p className="text-sm text-gray-600 font-medium">Building your production brief...</p>
-        <p className="text-xs text-gray-400">This takes 10-20 seconds</p>
+        <p className="text-sm text-gray-600 font-medium">
+          {progressMessage || 'Building your production brief...'}
+        </p>
+        <p className="text-xs text-gray-400">This takes 10–20 seconds</p>
       </div>
     );
   }
@@ -98,7 +111,6 @@ export function BriefBuilder({ analysisId }: BriefBuilderProps) {
     );
   }
 
-  // Idle state — show form
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
       <h3 className="text-lg font-semibold text-gray-900">Build Production Brief</h3>
@@ -136,7 +148,7 @@ export function BriefBuilder({ analysisId }: BriefBuilderProps) {
         </div>
 
         <button
-          onClick={handleBuild}
+          onClick={() => void handleBuild()}
           disabled={!channelName.trim() || !niche.trim()}
           className="w-full rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
         >

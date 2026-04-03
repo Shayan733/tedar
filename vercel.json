@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/scout/run/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/decode/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/build/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

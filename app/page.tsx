@@ -1,32 +1,19 @@
 'use client';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 1 OF 2 — STATE MACHINE + DUMMY RENDERING
-// All five states (idle, clarifying, running, complete, error) render correctly
-// with hardcoded dummy data before any real API calls are wired in.
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { useState } from 'react';
 import { OutlierCard } from '@/components/OutlierCard';
-import { PipelineProgress } from '@/components/PipelineProgress';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { NichePipelineResult, ChannelPipelineResult, VideoPipelineResult } from '@/lib/types';
-
-// ── State types ──────────────────────────────────────────────────────────────
+import { readStream } from '@/lib/streaming';
 
 type PageState = 'idle' | 'interpreting' | 'clarifying' | 'confirmed' | 'running' | 'complete' | 'error';
-//  idle        → user has typed nothing yet
-//  interpreting → waiting for /api/scout/interpret to return
-//  clarifying  → TEDAR asked a question, waiting for user's answer
-//  confirmed   → TEDAR understood the intent, showing confirmation + Run button
-//  running     → /api/scout/run is in progress, progress messages cycling
-//  complete    → results received, cards displayed
-//  error       → something failed, error message shown with Try Again
 
-
-// ── Component ─────────────────────────────────────────────────────────────────
+interface ScoutResultData {
+  results: NichePipelineResult | ChannelPipelineResult | VideoPipelineResult;
+  narratorMessage: string;
+}
 
 export default function Home() {
   const [pageState, setPageState] = useState<PageState>('idle');
@@ -39,8 +26,7 @@ export default function Home() {
   const [narratorMessage, setNarratorMessage] = useState('');
   const [results, setResults] = useState<NichePipelineResult | ChannelPipelineResult | VideoPipelineResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-
-  // ── Handlers (Step 1: hardcoded flows) ─────────────────────────────────────
+  const [progressMessage, setProgressMessage] = useState('');
 
   async function handleSubmit() {
     if (!userInput.trim()) return;
@@ -74,6 +60,7 @@ export default function Home() {
 
   async function handleRun() {
     setPageState('running');
+    setProgressMessage('');
 
     try {
       const res = await fetch('/api/scout/run', {
@@ -81,11 +68,20 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ inputType, inputValue }),
       });
-      const data = await res.json() as Record<string, unknown>;
-      if (data.error) throw new Error(data.error as string);
-      setResults(data.results as NichePipelineResult | ChannelPipelineResult | VideoPipelineResult);
-      setNarratorMessage(data.narratorMessage as string);
-      setPageState('complete');
+
+      await readStream(res, (event) => {
+        if (event.type === 'progress') {
+          setProgressMessage(event.message);
+        } else if (event.type === 'result') {
+          const data = event.data as ScoutResultData;
+          setResults(data.results);
+          setNarratorMessage(data.narratorMessage);
+          setPageState('complete');
+        } else if (event.type === 'error') {
+          setErrorMessage(event.message);
+          setPageState('error');
+        }
+      });
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : 'Scout failed. Please try again.');
       setPageState('error');
@@ -103,9 +99,8 @@ export default function Home() {
     setNarratorMessage('');
     setResults(null);
     setErrorMessage('');
+    setProgressMessage('');
   }
-
-  // ── Derived values ──────────────────────────────────────────────────────────
 
   const isBusy = pageState === 'interpreting' || pageState === 'running';
   const isRunning = pageState === 'running';
@@ -116,19 +111,15 @@ export default function Home() {
     : [];
   const videoResult = results?.inputType === 'video' ? results as VideoPipelineResult : null;
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-3xl mx-auto px-6 py-16 space-y-8">
 
-        {/* Header — always visible */}
         <div className="text-center space-y-1">
           <h1 className="text-4xl font-bold tracking-tight">TEDAR</h1>
           <p className="text-sm text-gray-400 tracking-wide">See Deeper. See Further.</p>
         </div>
 
-        {/* Input — disabled while busy */}
         <div className="flex gap-2">
           <Input
             value={userInput}
@@ -146,7 +137,6 @@ export default function Home() {
           </Button>
         </div>
 
-        {/* STATE: clarifying — TEDAR asks a question */}
         {pageState === 'clarifying' && (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <p className="text-xs text-gray-400 mb-1 font-medium uppercase tracking-wide">TEDAR</p>
@@ -154,7 +144,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* STATE: confirmed — TEDAR understood, shows what it will do */}
         {pageState === 'confirmed' && (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
             <p className="text-xs text-gray-400 mb-1 font-medium uppercase tracking-wide">TEDAR</p>
@@ -165,13 +154,18 @@ export default function Home() {
           </div>
         )}
 
-        {/* STATE: running — animated progress */}
-        <PipelineProgress
-          status={isRunning ? 'running' : 'idle'}
-          inputType={inputType ?? undefined}
-        />
+        {/* STATE: running — live progress from stream */}
+        {isRunning && (
+          <div className="space-y-3 py-4">
+            <div className="h-1 w-full rounded bg-gray-200 overflow-hidden">
+              <div className="h-full bg-violet-500 animate-pulse" />
+            </div>
+            <p className="text-sm text-gray-600 text-center">
+              {progressMessage || 'Starting Scout...'}
+            </p>
+          </div>
+        )}
 
-        {/* STATE: error */}
         {pageState === 'error' && (
           <Alert variant="destructive">
             <AlertDescription>{errorMessage}</AlertDescription>
@@ -181,7 +175,6 @@ export default function Home() {
           </Alert>
         )}
 
-        {/* STATE: complete — narrator summary + result cards */}
         {pageState === 'complete' && (
           <div className="space-y-6">
             {narratorMessage && (
@@ -213,7 +206,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Footer reset — visible whenever the user has done anything */}
         {pageState !== 'idle' && (
           <div className="text-center pt-4 border-t border-gray-100">
             <button
