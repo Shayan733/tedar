@@ -1,14 +1,23 @@
 // TEDAR — Decode API route (streaming)
-// Streams progress events via SSE. Checks cache first — only calls LLM if needed.
+// Task 2C: Accepts videoId (Supabase UUID) and runs analyseVideo() only.
+// prepareVideo() is handled separately by /api/decode/prepare.
+// Progress messages stream via SSE as the K1 analysis runs.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { decodeVideo } from '@/lib/analysis';
+import { analyseVideo } from '@/lib/analysis';
 import { createStreamResponse } from '@/lib/streaming';
 
+export const maxDuration = 60; // Vercel function timeout for LLM call
+
+interface DecodeBody {
+  videoId: string;       // Supabase UUID — NOT the YouTube video ID
+  forceRefresh?: boolean;
+}
+
 export async function POST(request: NextRequest): Promise<Response> {
-  let body: Record<string, unknown>;
+  let body: DecodeBody;
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    body = (await request.json()) as DecodeBody;
   } catch {
     return NextResponse.json(
       { error: 'Invalid request body', code: 'INVALID_BODY' },
@@ -16,34 +25,21 @@ export async function POST(request: NextRequest): Promise<Response> {
     );
   }
 
-  const videoUrl = body.videoUrl;
-  const forceRefresh = body.forceRefresh === true;
+  const { videoId, forceRefresh = false } = body;
 
-  if (!videoUrl || typeof videoUrl !== 'string') {
+  if (!videoId || typeof videoId !== 'string' || !videoId.trim()) {
     return NextResponse.json(
-      { error: 'Video URL is required', code: 'INVALID_URL' },
+      { error: 'videoId (Supabase UUID) is required', code: 'INVALID_ID' },
       { status: 400 }
     );
   }
 
   return createStreamResponse(async (send) => {
-    send({ type: 'progress', message: 'Checking cache...' });
-
-    const { result, cached, analysisId } = await decodeVideo(videoUrl, { forceRefresh });
-
-    if (cached) {
-      send({ type: 'progress', message: 'Returning cached analysis.' });
-    } else {
-      send({ type: 'progress', message: 'Transcript ready. Running K1 framework analysis...' });
-      send({ type: 'progress', message: 'Saving to database...' });
-    }
-
-    send({
-      type: 'result',
-      data: {
-        data: result,
-        meta: { cached, analysisId },
-      },
+    const result = await analyseVideo(videoId, {
+      forceRefresh,
+      onProgress: (message) => send({ type: 'progress', message }),
     });
+
+    send({ type: 'result', data: result });
   });
 }
