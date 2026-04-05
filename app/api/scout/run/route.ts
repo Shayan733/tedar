@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runNichePipeline } from '@/lib/pipeline/niche-pipeline';
 import { runChannelPipeline } from '@/lib/pipeline/channel-pipeline';
 import { runVideoPipeline } from '@/lib/pipeline/video-pipeline';
-import { generateLLMResponse } from '@/lib/llm/provider';
 import { createStreamResponse } from '@/lib/streaming';
 import {
   NichePipelineResult,
@@ -19,12 +18,6 @@ interface RunBody {
   inputType: 'niche' | 'channel' | 'video';
   inputValue: string;
 }
-
-const NARRATOR_SYSTEM_PROMPT =
-  'You are TEDAR, a content intelligence system. You have just completed a Scout analysis. ' +
-  'Summarise the results in 2–3 sentences in a direct, intelligent voice. ' +
-  'Name the top outlier video and its score. Note one pattern across the results if visible. ' +
-  'Do not use bullet points. Do not use the word "fascinating". Be specific, not generic.';
 
 function buildNarratorMessage(results: PipelineResult): string {
   if (results.inputType === 'video') {
@@ -94,18 +87,13 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new Error(`Unknown inputType: ${inputType}`);
     }
 
-    const narratorResponse = await generateLLMResponse(
-      NARRATOR_SYSTEM_PROMPT,
-      buildNarratorMessage(results)
-    );
-
     send({
       type: 'result',
       data: {
         runId: results.runId,
         inputType: results.inputType,
         results,
-        narratorMessage: narratorResponse.text,
+        narratorMessage: buildNarratorMessage(results),
       },
     });
   });
