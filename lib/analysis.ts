@@ -1,6 +1,6 @@
 // TEDAR — Decoder orchestrator
-// Single entry point for the full decode pipeline.
-// Everything else (API route, decode page) calls this one function.
+// prepareVideo: fetch metadata + transcript, save to DB, no LLM (~5 seconds)
+// analyseVideo: load from DB, run K1 analysis, stream progress (~15–30 seconds)
 
 import { getVideoData } from './youtube/metadata';
 import { getTranscript } from './youtube/transcript';
@@ -12,18 +12,27 @@ import {
   upsertAnalysis,
   getAnalysisByVideoId,
   getVideoByYoutubeId,
+  getVideoById,
+  getTranscriptByVideoId,
 } from './supabase-decoder';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from './config';
 import { DecoderResult, VideoData } from './types';
 
-// Extracts YouTube video ID from any URL format or raw ID
+export type DecodeProgressCallback = (message: string) => void;
+
+export interface PrepareResult {
+  videoId: string;                    // Supabase UUID
+  youtubeVideoId: string;
+  videoData: VideoData;
+  transcript: string;
+  wordCount: number;
+  existingAnalysisId: string | null;
+}
+
 function extractYoutubeVideoId(input: string): string {
-  const standardMatch = input.match(/[?&]v=([^&]+)/);
-  if (standardMatch) return standardMatch[1];
-  const shortMatch = input.match(/youtu\.be\/([^?&]+)/);
-  if (shortMatch) return shortMatch[1];
-  const embedMatch = input.match(/\/embed\/([^?&]+)/);
-  if (embedMatch) return embedMatch[1];
+  const m = input.match(/[?&]v=([^&]+)/);     if (m) return m[1];
+  const s = input.match(/youtu\.be\/([^?&]+)/); if (s) return s[1];
+  const e = input.match(/\/embed\/([^?&]+)/);  if (e) return e[1];
   if (/^[\w-]{11}$/.test(input)) return input;
   return input;
 }
@@ -39,104 +48,110 @@ function validateDecoderResult(parsed: unknown): parsed is DecoderResult {
   );
 }
 
-export interface DecodeOutcome {
-  result: DecoderResult;
-  cached: boolean;
-  analysisId?: string;
-}
-
-export async function decodeVideo(
-  videoUrl: string,
-  options?: {
-    knowledgeBrief?: string;
-    forceRefresh?: boolean;
-  }
-): Promise<DecodeOutcome> {
-  // Step 1: extract YouTube video ID
+export async function prepareVideo(videoUrl: string): Promise<PrepareResult> {
   const youtubeVideoId = extractYoutubeVideoId(videoUrl);
 
-  // Step 2: look up or fetch video record
+  // Get or fetch video record
   let videoData: VideoData;
-  let supabaseVideoId: string;
-
+  let videoId: string;
   const existing = await getVideoByYoutubeId(youtubeVideoId);
-  if (existing && existing.id) {
+  if (existing?.id) {
     videoData = existing;
-    supabaseVideoId = existing.id;
+    videoId = existing.id;
   } else {
     videoData = await getVideoData(videoUrl);
-    // channelId from getVideoData is a YouTube channel ID string, not a Supabase UUID.
-    // Clear it to avoid Phase 2 Bug #2 (UUID type error on the videos table).
-    videoData = { ...videoData, channelId: undefined };
-    supabaseVideoId = await upsertVideo(videoData);
-    videoData = { ...videoData, id: supabaseVideoId };
+    videoData = { ...videoData, channelId: undefined }; // prevent UUID type error (Phase 2 Bug #2)
+    videoId = await upsertVideo(videoData);
+    videoData = { ...videoData, id: videoId };
   }
 
-  // Step 3: cache check — return immediately if already analysed
-  if (!options?.forceRefresh) {
-    const cached = await getAnalysisByVideoId(supabaseVideoId, 'decode');
-    if (cached) {
-      return { result: cached.result, cached: true, analysisId: cached.id };
-    }
+  // Get or fetch transcript
+  let transcript: string;
+  const existingTranscript = await getTranscriptByVideoId(videoId);
+  if (existingTranscript) {
+    transcript = existingTranscript.fullText;
+  } else {
+    transcript = await getTranscript(youtubeVideoId);
+    await upsertTranscript({
+      videoId,
+      fullText: transcript,
+      wordCount: transcript.split(' ').length,
+      language: 'en',
+    });
   }
 
-  // Step 4: fetch transcript
-  const transcript = await getTranscript(youtubeVideoId);
+  const wordCount = transcript.split(' ').length;
+  const existingAnalysis = await getAnalysisByVideoId(videoId, 'decode');
 
-  // Step 5: save transcript to database
-  await upsertTranscript({
-    videoId: supabaseVideoId,
-    fullText: transcript,
-    wordCount: transcript.split(' ').length,
-    language: 'en',
-  });
-
-  // Step 6: build the K1 prompt
-  const { systemPrompt, userMessage } = buildDecoderPrompt(
+  return {
+    videoId,
+    youtubeVideoId,
     videoData,
     transcript,
-    options?.knowledgeBrief
-  );
+    wordCount,
+    existingAnalysisId: existingAnalysis?.id ?? null,
+  };
+}
 
-  // Step 7: record start time
+export async function analyseVideo(
+  videoId: string,
+  options?: { forceRefresh?: boolean; onProgress?: DecodeProgressCallback }
+): Promise<DecoderResult> {
+  const emit = (msg: string) => options?.onProgress?.(msg);
+
+  const videoData = await getVideoById(videoId);
+  if (!videoData) throw new Error('Video not found. Run prepareVideo first.');
+
+  const transcriptRecord = await getTranscriptByVideoId(videoId);
+  if (!transcriptRecord) throw new Error('Transcript not found. Run prepareVideo first.');
+
+  // Return cached result if available and not forcing refresh
+  if (!options?.forceRefresh) {
+    const cached = await getAnalysisByVideoId(videoId, 'decode');
+    if (cached) return { ...cached.result, id: cached.id };
+  }
+
+  emit('Loading transcript from database...');
+  const { fullText: transcript, wordCount } = transcriptRecord;
+  emit(`Transcript loaded — ${wordCount} words`);
+  emit('Building K1 analysis prompt...');
+  const { systemPrompt, userMessage } = buildDecoderPrompt(videoData, transcript);
+
+  emit('Analysing with Groq llama-3.3-70B — identifying psychological triggers...');
+  emit('Scoring System 1 vs System 2 activation...');
+  emit('Evaluating information gap architecture...');
+  emit('Measuring STEPPS dimensions...');
+
   const startTime = Date.now();
-
-  // Step 8: call LLM
   const response = await generateLLMResponse(systemPrompt, userMessage, {
     temperature: LLM_TEMPERATURE,
     maxTokens: LLM_MAX_TOKENS,
   });
-
-  // Step 9: record processing time
   const processingTimeMs = Date.now() - startTime;
 
-  // Step 10: parse and validate — retry once on failure
+  emit('Parsing psychological formula...');
+
   let decoderResult: DecoderResult;
   try {
-    const cleaned = stripJsonFences(response.text);
-    const parsed: unknown = JSON.parse(cleaned);
+    const parsed: unknown = JSON.parse(stripJsonFences(response.text));
     if (!validateDecoderResult(parsed)) throw new Error('Invalid shape');
     decoderResult = parsed;
   } catch {
-    // Retry once with an explicit JSON instruction appended
-    const retryResponse = await generateLLMResponse(
+    const retry = await generateLLMResponse(
       systemPrompt,
-      userMessage + '\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no backticks, no text outside the JSON object.',
+      userMessage + '\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no backticks.',
       { temperature: LLM_TEMPERATURE, maxTokens: LLM_MAX_TOKENS }
     );
-    try {
-      const cleaned = stripJsonFences(retryResponse.text);
-      const parsed: unknown = JSON.parse(cleaned);
-      if (!validateDecoderResult(parsed)) throw new Error('Invalid shape on retry');
-      decoderResult = parsed;
-    } catch {
-      throw new Error('Analysis could not be completed. Please try again.');
-    }
+    const parsed: unknown = JSON.parse(stripJsonFences(retry.text));
+    if (!validateDecoderResult(parsed)) throw new Error('Analysis could not be completed. Please try again.');
+    decoderResult = parsed as DecoderResult;
   }
 
-  // Step 11: save analysis to database
+  emit('Validating analysis structure...');
+  emit('Saving to database...');
+
   const analysisId = await upsertAnalysis({
-    videoId: supabaseVideoId,
+    videoId,
     analysisType: 'decode',
     llmProvider: process.env.LLM_PROVIDER ?? 'groq',
     llmModel: 'llama-3.3-70b-versatile',
@@ -148,6 +163,17 @@ export async function decodeVideo(
     tokensInput: response.tokensUsed,
   });
 
-  // Step 12: return result
-  return { result: decoderResult, cached: false, analysisId };
+  emit(`Analysis complete — confidence: ${decoderResult.engagementScore.overall}`);
+  return { ...decoderResult, id: analysisId };
+}
+
+// Compatibility wrapper — used by existing /api/decode/route.ts until Task 2C replaces it
+export async function decodeVideo(
+  videoUrl: string,
+  options?: { forceRefresh?: boolean }
+): Promise<{ result: DecoderResult; cached: boolean; analysisId?: string }> {
+  const prepared = await prepareVideo(videoUrl);
+  const isCached = !options?.forceRefresh && prepared.existingAnalysisId !== null;
+  const result = await analyseVideo(prepared.videoId, { forceRefresh: options?.forceRefresh });
+  return { result, cached: isCached, analysisId: result.id };
 }

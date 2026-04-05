@@ -231,6 +231,7 @@ export interface ScriptOutline {
 }
 
 export interface DecoderResult {
+  id?: string;                        // Supabase analysis UUID — set after saving to DB
   psychologicalFormula: PsychologicalFormula;
   engagementScore: EngagementScore;
   replicationBrief: ReplicationBrief;

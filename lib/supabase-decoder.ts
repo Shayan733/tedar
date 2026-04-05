@@ -120,6 +120,49 @@ export async function getAnalysisByVideoId(
   };
 }
 
+export async function getVideoById(id: string): Promise<VideoData | null> {
+  const { data, error } = await supabaseAdmin
+    .from('videos')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`Failed to get video ${id}: ${error.message}`);
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    youtubeVideoId: data.youtube_video_id as string,
+    channelId: data.channel_id as string | undefined,
+    title: data.title as string,
+    description: data.description as string | undefined,
+    url: data.url as string,
+    viewCount: data.view_count as number,
+    likeCount: data.like_count as number | undefined,
+    commentCount: data.comment_count as number | undefined,
+    durationSeconds: data.duration_seconds as number | undefined,
+    publishedAt: data.published_at as string | undefined,
+    thumbnailUrl: data.thumbnail_url as string | undefined,
+    tags: data.tags as string[] | undefined,
+    outlierScore: data.outlier_score as number | undefined,
+    outlierCategory: data.outlier_category as VideoData['outlierCategory'],
+    hasTranscript: data.has_transcript as boolean,
+    hasAnalysis: data.has_analysis as boolean,
+    createdAt: data.created_at as string | undefined,
+  };
+}
+
+export async function getTranscriptByVideoId(
+  videoId: string
+): Promise<{ fullText: string; wordCount: number } | null> {
+  const { data, error } = await supabaseAdmin
+    .from('transcripts')
+    .select('full_text, word_count')
+    .eq('video_id', videoId)
+    .maybeSingle();
+  if (error) throw new Error(`Failed to get transcript for video ${videoId}: ${error.message}`);
+  if (!data) return null;
+  return { fullText: data.full_text as string, wordCount: data.word_count as number };
+}
+
 export async function getVideoByYoutubeId(youtubeVideoId: string): Promise<VideoData | null> {
   const { data, error } = await supabaseAdmin
     .from('videos')
