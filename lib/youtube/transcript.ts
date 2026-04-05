@@ -58,23 +58,36 @@ function pickTrack(tracks: CaptionTrack[]): CaptionTrack | undefined {
 
 // Returns caption tracks for one client, or null if this client is blocked/unavailable.
 // Throws only for hard errors (VIDEO_UNAVAILABLE) that mean no other client will help.
+// 8-second timeout per client — YouTube sometimes holds connections open from cloud IPs.
 async function tryClient(
   videoId: string,
   client: typeof CLIENTS[number]
 ): Promise<CaptionTrack[] | null> {
-  const res = await fetch(
-    'https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': client.ua },
-      body: JSON.stringify({
-        context: { client: { clientName: client.name, clientVersion: client.version, hl: 'en', gl: 'US' } },
-        videoId,
-        racyCheckOk: true,
-        contentCheckOk: true,
-      }),
-    }
-  );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  let res: Response;
+  try {
+    res = await fetch(
+      'https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': client.ua },
+        body: JSON.stringify({
+          context: { client: { clientName: client.name, clientVersion: client.version, hl: 'en', gl: 'US' } },
+          videoId,
+          racyCheckOk: true,
+          contentCheckOk: true,
+        }),
+        signal: controller.signal,
+      }
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    console.log(`[transcript] ${client.name} fetch error: ${msg.includes('abort') ? 'timeout (8s)' : msg}`);
+    return null; // treat timeout/network error as soft failure, try next client
+  } finally {
+    clearTimeout(timeout);
+  }
   console.log(`[transcript] ${client.name} http: ${res.status}`);
   if (!res.ok) return null;
 
