@@ -1,64 +1,58 @@
 // TEDAR — Fetch metadata for a single YouTube video
-// Used when a user pastes a specific video URL (Mode 3 input).
+// Uses direct fetch to YouTube Data API v3 (edge-compatible — no googleapis dependency).
 
-import { google } from 'googleapis';
 import { VideoData } from '../types';
 
-function getYouTubeClient() {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) throw new Error('YOUTUBE_API_KEY is not set in environment variables');
-  return google.youtube({ version: 'v3', auth: apiKey });
-}
-
 function extractVideoId(url: string): string {
-  // Standard: https://www.youtube.com/watch?v=VIDEO_ID
-  const standardMatch = url.match(/[?&]v=([^&]+)/);
-  if (standardMatch) return standardMatch[1];
-
-  // Short: https://youtu.be/VIDEO_ID
-  const shortMatch = url.match(/youtu\.be\/([^?&]+)/);
-  if (shortMatch) return shortMatch[1];
-
-  // Embed: https://www.youtube.com/embed/VIDEO_ID
-  const embedMatch = url.match(/\/embed\/([^?&]+)/);
-  if (embedMatch) return embedMatch[1];
-
-  // Raw ID (11 chars, alphanumeric + - _)
+  const m = url.match(/[?&]v=([^&]+)/); if (m) return m[1];
+  const s = url.match(/youtu\.be\/([^?&]+)/); if (s) return s[1];
+  const e = url.match(/\/embed\/([^?&]+)/); if (e) return e[1];
   if (/^[\w-]{11}$/.test(url)) return url;
-
   throw new Error(`Could not extract video ID from: ${url}`);
 }
 
 function parseDuration(iso: string): number {
   const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
   if (!match) return 0;
-  const hours = parseInt(match[1] ?? '0', 10);
-  const minutes = parseInt(match[2] ?? '0', 10);
-  const seconds = parseInt(match[3] ?? '0', 10);
-  return hours * 3600 + minutes * 60 + seconds;
+  return (parseInt(match[1] ?? '0', 10)) * 3600
+       + (parseInt(match[2] ?? '0', 10)) * 60
+       + (parseInt(match[3] ?? '0', 10));
+}
+
+interface YTVideoItem {
+  id?: string;
+  snippet?: {
+    title?: string; description?: string; channelId?: string;
+    publishedAt?: string; tags?: string[];
+    thumbnails?: { high?: { url?: string }; default?: { url?: string } };
+  };
+  statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
+  contentDetails?: { duration?: string };
 }
 
 export async function getVideoData(videoUrl: string): Promise<VideoData> {
-  const youtube = getYouTubeClient();
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) throw new Error('YOUTUBE_API_KEY is not set');
+
   const videoId = extractVideoId(videoUrl);
+  const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoId}&key=${encodeURIComponent(apiKey)}`;
 
-  const response = await youtube.videos.list({
-    part: ['snippet', 'statistics', 'contentDetails'],
-    id: [videoId],
-  });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`YouTube API error: ${res.status}`);
+  const data = await res.json() as { items?: YTVideoItem[] };
 
-  const item = response.data.items?.[0];
+  const item = data.items?.[0];
   if (!item) throw new Error(`Video not found: ${videoUrl}`);
 
   const stats = item.statistics ?? {};
   const snippet = item.snippet ?? {};
 
   return {
-    youtubeVideoId: item.id!,
+    youtubeVideoId: item.id ?? videoId,
     channelId: snippet.channelId ?? undefined,
     title: snippet.title ?? '',
     description: snippet.description ?? '',
-    url: `https://www.youtube.com/watch?v=${item.id}`,
+    url: `https://www.youtube.com/watch?v=${item.id ?? videoId}`,
     viewCount: parseInt(stats.viewCount ?? '0', 10),
     likeCount: stats.likeCount ? parseInt(stats.likeCount, 10) : undefined,
     commentCount: stats.commentCount ? parseInt(stats.commentCount, 10) : undefined,

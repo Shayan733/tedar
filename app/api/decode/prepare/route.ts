@@ -1,11 +1,12 @@
-// TEDAR — Decode Prepare endpoint
+// TEDAR — Decode Prepare endpoint (Edge Runtime — Cloudflare IPs)
 // Fetches video metadata + transcript and saves to DB. No LLM call.
-// Called by the client immediately on landing on the decode page (~5 seconds).
+// Must run on Edge (not Lambda) so YouTube allows the InnerTube caption request.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prepareVideo } from '@/lib/analysis';
+import { prepareVideo } from '@/lib/prepare';
 
-export const maxDuration = 30; // Vercel function timeout
+export const runtime = 'edge';
+export const maxDuration = 30;
 
 type ErrorCode =
   | 'INVALID_URL'

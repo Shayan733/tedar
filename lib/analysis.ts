@@ -1,41 +1,22 @@
 // TEDAR — Decoder orchestrator
-// prepareVideo: fetch metadata + transcript, save to DB, no LLM (~5 seconds)
+// prepareVideo: fetch metadata + transcript, no LLM — lives in lib/prepare.ts (edge-compatible)
 // analyseVideo: load from DB, run K1 analysis, stream progress (~15–30 seconds)
 
-import { getVideoData } from './youtube/metadata';
-import { getTranscript } from './youtube/transcript';
+import { prepareVideo, PrepareResult, DecodeProgressCallback } from './prepare';
 import { buildDecoderPrompt, DECODER_PROMPT_VERSION } from './prompts/k1-decoder';
 import { generateLLMResponse, stripJsonFences } from './llm/provider';
-import { upsertVideo } from './supabase';
 import {
-  upsertTranscript,
   upsertAnalysis,
   getAnalysisByVideoId,
-  getVideoByYoutubeId,
   getVideoById,
   getTranscriptByVideoId,
 } from './supabase-decoder';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from './config';
-import { DecoderResult, VideoData } from './types';
+import { DecoderResult } from './types';
 
-export type DecodeProgressCallback = (message: string) => void;
-
-export interface PrepareResult {
-  videoId: string;                    // Supabase UUID
-  youtubeVideoId: string;
-  videoData: VideoData;
-  transcript: string;
-  wordCount: number;
-  existingAnalysisId: string | null;
-}
-
-function extractYoutubeVideoId(input: string): string {
-  const m = input.match(/[?&]v=([^&]+)/);     if (m) return m[1];
-  const s = input.match(/youtu\.be\/([^?&]+)/); if (s) return s[1];
-  const e = input.match(/\/embed\/([^?&]+)/);  if (e) return e[1];
-  if (/^[\w-]{11}$/.test(input)) return input;
-  return input;
-}
+// Re-export for backwards compatibility — other files import these from lib/analysis
+export type { PrepareResult, DecodeProgressCallback };
+export { prepareVideo };
 
 function validateDecoderResult(parsed: unknown): parsed is DecoderResult {
   if (typeof parsed !== 'object' || parsed === null) return false;
@@ -46,51 +27,6 @@ function validateDecoderResult(parsed: unknown): parsed is DecoderResult {
     typeof r.replicationBrief === 'object' &&
     typeof r.scriptOutline === 'object'
   );
-}
-
-export async function prepareVideo(videoUrl: string): Promise<PrepareResult> {
-  const youtubeVideoId = extractYoutubeVideoId(videoUrl);
-
-  // Get or fetch video record
-  let videoData: VideoData;
-  let videoId: string;
-  const existing = await getVideoByYoutubeId(youtubeVideoId);
-  if (existing?.id) {
-    videoData = existing;
-    videoId = existing.id;
-  } else {
-    videoData = await getVideoData(videoUrl);
-    videoData = { ...videoData, channelId: undefined }; // prevent UUID type error (Phase 2 Bug #2)
-    videoId = await upsertVideo(videoData);
-    videoData = { ...videoData, id: videoId };
-  }
-
-  // Get or fetch transcript
-  let transcript: string;
-  const existingTranscript = await getTranscriptByVideoId(videoId);
-  if (existingTranscript) {
-    transcript = existingTranscript.fullText;
-  } else {
-    transcript = await getTranscript(youtubeVideoId);
-    await upsertTranscript({
-      videoId,
-      fullText: transcript,
-      wordCount: transcript.split(' ').length,
-      language: 'en',
-    });
-  }
-
-  const wordCount = transcript.split(' ').length;
-  const existingAnalysis = await getAnalysisByVideoId(videoId, 'decode');
-
-  return {
-    videoId,
-    youtubeVideoId,
-    videoData,
-    transcript,
-    wordCount,
-    existingAnalysisId: existingAnalysis?.id ?? null,
-  };
 }
 
 export async function analyseVideo(
@@ -167,7 +103,7 @@ export async function analyseVideo(
   return { ...decoderResult, id: analysisId };
 }
 
-// Compatibility wrapper — used by existing /api/decode/route.ts until Task 2C replaces it
+// Compatibility wrapper — preserves backwards compatibility for scripts
 export async function decodeVideo(
   videoUrl: string,
   options?: { forceRefresh?: boolean }
