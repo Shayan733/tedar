@@ -1,5 +1,5 @@
 # TEDAR — CLAUDE.md
-# Phase 4: Builder Engine — Production Direction Brief
+# Phase 5: Deployment Fixes & Transcript Preview Flow
 
 ---
 
@@ -11,7 +11,7 @@ When a task is complete and tested, update this file by changing `- [ ]` to `- [
 
 ---
 
-## WHAT WAS BUILT IN PHASES 0–3 — AGENT CONTEXT
+## WHAT WAS BUILT IN PHASES 0–4 — AGENT CONTEXT
 
 Read this before doing anything. This is what already exists. Do not re-create, re-install, or re-initialise anything listed here.
 
@@ -20,92 +20,100 @@ Read this before doing anything. This is what already exists. Do not re-create, 
 - Founder: Shayan (non-technical — explain everything in plain English, no jargon)
 - GitHub: github.com/Shayan733/tedar (private repo, connected and pushing)
 - Local path: ~/Desktop/TEDAR/tedar
+- **Live URL: https://tedar.vercel.app** (deployed, auto-deploys on push to main)
 
 **Already built and confirmed working:**
-- ✅ Next.js 14 project with TypeScript and Tailwind — runs at localhost:3000
-- ✅ All dependencies installed
-- ✅ 11 Supabase tables live and populated with real data
-- ✅ Git connected to GitHub, Phases 0–3 committed and pushed
-- ✅ Full Scout Engine — niche, channel, and video input modes working
-- ✅ Full Decoder Engine — transcript fetch, K1 analysis, cache, decode page working
-- ✅ 3–5+ real decode analyses in the `analyses` table (analysis_type = 'decode')
-
-**Phase 3 files confirmed working — do not rewrite any of these:**
-- ✅ `lib/types.ts` — all interfaces including DecoderResult, EngagementScore, DimensionScores, PsychologicalFormula, ReplicationBrief, ScriptOutline, KeyMoment, TranscriptData, AnalysisRecord
-- ✅ `lib/supabase.ts` — all database functions including upsertTranscript, upsertAnalysis, getAnalysisByVideoId, getVideoByYoutubeId
-- ✅ `lib/youtube/transcript.ts` — transcript fetcher with error handling
-- ✅ `lib/prompts/k1-decoder.ts` — K1 prompt version k1-v1.1, knowledgeBrief parameter accepted
-- ✅ `lib/analysis.ts` — full decode pipeline with cache, retry, database save
-- ✅ `app/api/decode/route.ts` — decode API with cached flag in meta
-- ✅ `components/AnalysisCard.tsx` — four tabs: Formula, Scores, Brief, Script
-- ✅ `components/FormulaTab.tsx`, `ScoresTab.tsx`, `BriefTab.tsx`, `ScriptTab.tsx`
-- ✅ `app/decode/[videoId]/page.tsx` — server component with await params
-- ✅ `app/decode/[videoId]/DecodeLoader.tsx` — client component, handles live decode
+- ✅ Full Next.js 14 project with TypeScript and Tailwind
+- ✅ All 11 Supabase tables live and populated with real data
+- ✅ Full Scout Engine — niche, channel, and video input modes
+- ✅ Full Decoder Engine — K1 psychological analysis with four tabs
+- ✅ Full Builder Engine — production briefs via Gemini 2.5 Flash
+- ✅ Streaming responses via Server-Sent Events — `lib/streaming.ts`
+- ✅ Deployed to Vercel at tedar.vercel.app
 
 **LLM configuration — CURRENT ACTIVE STATE:**
-- **Decoder calls:** Groq `llama-3.3-70b-versatile` via `LLM_PROVIDER=groq`
-- **Builder calls:** Gemini 2.5 Flash via `BUILDER_LLM_PROVIDER=gemini`
-- These are two separate env vars — the Builder uses its own provider config
+- **Decoder:** Groq `llama-3.3-70b-versatile` via `LLM_PROVIDER=groq`
+- **Builder:** Gemini 2.5 Flash via `BUILDER_LLM_PROVIDER=gemini`
 - Never call any LLM API directly — always through `lib/llm/provider.ts`
-- Groq limit: 12,000 TPM. Builder calls are smaller (~3,000 tokens) — no constraint issue.
-- Gemini limit: 20 req/day. Builder is one call per brief. Manage usage accordingly.
 
-**Quality gate context from Phase 3:**
-- Formula and Scores tabs: working well, specific, non-generic ✅
-- Brief and Script tabs: directionally correct but shallow — llama-3.3-70b limitation ⚠️
-- Builder runs on Gemini 2.5 Flash — expected to produce deeper, more prescriptive output
-- The Builder is a fresh LLM call with a different prompt — it can compensate for Decoder shallowness
-
-**Config values — do not change these:**
-- `MAX_TRANSCRIPT_WORDS: 2500` — do not increase (Groq TPM limit)
-- `maxChannelsToScan: 5` — do not change
-- `maxVideosPerChannel: 100` — do not change
-- `LLM_TEMPERATURE: 0.3` — applies to both Decoder and Builder
-- `LLM_MAX_TOKENS: 2048` — applies to Decoder. Builder uses 3000 (set in builder.ts directly)
+**Config values — DO NOT change these:**
+- `MAX_TRANSCRIPT_WORDS: 2500` — Groq TPM limit constraint
+- `maxChannelsToScan: 5`
+- `maxVideosPerChannel: 100`
+- `LLM_TEMPERATURE: 0.3`
+- `LLM_MAX_TOKENS: 2048` (Decoder)
+- Builder max tokens: 8,192 (set in `lib/builder.ts` directly)
 
 ---
 
-## BUGS FIXED IN PHASES 1–3 — DO NOT REINTRODUCE
+## BUGS FIXED IN PHASES 1–4 — DO NOT REINTRODUCE
 
 1. **next/image crash** — Use `<img>` tag for YouTube thumbnails. Domain whitelisted in next.config.ts.
 2. **Video pipeline UUID error** — Never pass YouTube channel ID string into channel_id DB column. Always use Supabase UUID.
-3. **"Unknown Channel" bug** — Always call fetchChannelName() helper. Never assume channelName is populated from getChannelVideos alone.
-4. **TypeScript error on Next.js params** — Always `await params` before accessing route parameters in server components.
+3. **"Unknown Channel" bug** — Always call fetchChannelName() helper.
+4. **TypeScript error on Next.js params** — Always `await params` before accessing route parameters.
 5. **Browser timeout** — maxChannelsToScan is 5, maxVideosPerChannel is 100. Never revert.
-6. **Supabase upsert without unique constraint** — Use select-then-update/insert pattern, not .upsert(onConflict). transcripts and analyses tables have no unique constraint on video_id.
+6. **Supabase upsert without unique constraint** — Use select-then-update/insert pattern.
+7. **Groq token limit** — MAX_TRANSCRIPT_WORDS must stay at 2,500.
+8. **Builder JSON truncation** — Builder max tokens must be 8,192.
 
 ---
 
-## WHAT THIS PHASE BUILDS
+## WHAT THIS PHASE FIXES AND BUILDS
 
-Phase 4 builds the Builder Engine. It takes a completed DecoderResult — already saved in the database from Phase 3 — and produces a personalised production direction brief: a specific hook with suggested phrasing, a beat-by-beat content structure, and a script outline. Every instruction is backed by a reason and a knowledge domain.
+Phase 5 solves two problems identified during the first Vercel deployment test at tedar.vercel.app, and introduces one major product improvement.
 
-**The key difference between the Decoder and the Builder:**
-- The Decoder is analytical: "here is WHY this video worked, scored against psychology frameworks"
-- The Builder is prescriptive: "here is WHAT TO DO to replicate it, with specific language and structure"
-- They are always separate LLM calls with separate prompts. Never combine them. Mixing produces muddled output.
+### Problem 1 — Transcripts fail on Vercel for EVERY video (CRITICAL)
+
+The `youtube-transcript` package works on the founder's local machine but fails on Vercel for every video — even TED Talks with confirmed captions. YouTube blocks scraping requests from cloud server IPs. This blocks the entire core product loop on the live site.
+
+### Problem 2 — Niche mode shows "load failed" on Vercel
+
+Niche mode tries to do everything in one 90-second request. The browser gives up waiting. Fix: split niche mode into two progressive frontend steps (discover → scan all) with no backend changes. Each individual request stays under Vercel's timeout window.
+
+### Product Improvement — Transcript Preview + Manual Decode Flow
+
+Currently, landing on the decode page runs the analysis automatically. The user sees nothing but a spinner for 15–30 seconds, has no visibility into what is being analysed, and cannot intervene if the transcript is poor.
+
+**The new flow:**
+1. User lands on decode page (from pasted URL, channel outlier click, or niche outlier click)
+2. Frontend automatically fetches video metadata AND transcript — takes ~5 seconds
+3. Page displays: video thumbnail, title, channel, view count, and **the full transcript in a scrollable box**
+4. User reviews the transcript and clicks **"Analyse with K1 Framework"** button
+5. Chain-of-thought progress streams as the analysis runs — user watches TEDAR think
+6. Results appear below the transcript. Transcript stays visible as a collapsible section.
+
+**Why this matters — the four psychological wins:**
+- **Agency:** the user commits deliberately, which makes the result feel earned and valuable
+- **Transparency:** they see the raw material TEDAR is working with — no black box
+- **Quality gate:** if the transcript is garbage, too short, or wrong language, they stop before wasting an analysis
+- **Premium feel:** automated pipelines feel cheap. Deliberate checkpoints feel crafted. Claude, Perplexity, Midjourney all give commitment moments before running. This places TEDAR in that category.
+
+**Consistency rule:** This flow applies to ALL decode entry points — video URL mode, clicking outliers from channel scan, clicking outliers from niche results. Every path lands on the transcript preview. No exceptions.
+
+**Cached analysis handling:** If a video already has a saved analysis in the database, the preview page still shows (transcript preview is valuable every time), but a prominent "View Previous Analysis" button loads the cached result instantly. A secondary "Re-analyse" option is also available.
+
+---
 
 **At the end of this phase, the founder can:**
-1. View a decoded video's analysis on the decode page
-2. Click "Build Production Brief" and enter their channel name and niche
-3. See a personalised brief with a specific hook strategy, beat-by-beat structure, and script outline
-4. Read every instruction with the domain and reason behind it
-5. Copy any section to clipboard for use in production
+1. Paste a video URL on tedar.vercel.app and see the video info + full transcript within ~5 seconds
+2. Decide whether to analyse it and click a button to commit
+3. Watch step-by-step progress messages as the analysis runs
+4. View the full K1 analysis with transcript still visible above
+5. Use niche mode without timeout errors via the new progressive scan flow
+6. Share the live URL with test creators confidently
 
-**Files built in this phase (in order):**
-1. New types added to `lib/types.ts` — BuilderResult, BuilderInstruction, CreatorContext, ProductionBrief, BriefRecord
-2. New database functions added to `lib/supabase.ts` — upsertBrief, getBriefByAnalysisId
-3. `lib/prompts/k1-builder.ts` — The Builder system prompt
-4. `lib/builder.ts` — Builder orchestrator
-5. `app/api/build/route.ts` — Build API endpoint
-6. `components/BuilderCard.tsx` — Production brief display component
-7. Update `app/decode/[videoId]/page.tsx` — Add "Build Production Brief" button and brief display
-8. `scripts/test-builder.ts` — Integration test
-9. Commit and push to GitHub
-
-**LLM calls in this phase:**
-- One Builder call per brief generation (~1,500 token system prompt + DecoderResult JSON)
-- All Builder calls go through `lib/llm/provider.ts` with `BUILDER_LLM_PROVIDER=gemini`
+**Files changed in this phase (in order):**
+1. `lib/youtube/transcript.ts` — transcript fetching rewritten for Vercel compatibility
+2. `lib/analysis.ts` — split `decodeVideo` into `prepareVideo` + `analyseVideo`, add progress callback
+3. `app/api/decode/prepare/route.ts` — NEW endpoint: fetch metadata + transcript for preview
+4. `app/api/decode/route.ts` — modified: now takes a videoId, loads transcript from DB, runs analysis only
+5. `components/TranscriptPreview.tsx` — NEW component: displays video info + transcript + analyse button
+6. `app/decode/[videoId]/DecodeLoader.tsx` — restructured for two-stage flow
+7. `app/decode/[videoId]/page.tsx` — updated to pass props correctly for new flow
+8. `app/page.tsx` — niche mode split into discover-then-scan progressive steps
+9. Verify deployment and run full live test suite on tedar.vercel.app
+10. Commit and push to GitHub
 
 **Estimated time:** 2–3 days.
 
@@ -113,35 +121,34 @@ Phase 4 builds the Builder Engine. It takes a completed DecoderResult — alread
 
 ## WHAT COMES AFTER THIS PHASE
 
-Phase 5 builds the full automated pipeline orchestrator — connecting Scout, Decoder, and Builder into one automated sequence with no manual steps between them. It also adds scheduled weekly scans and streaming progress updates.
+Phase 6 is UX polish — shared library page, dark/light mode toggle, typography and layout improvements. Phase 7+ is System 2 knowledge layer. Do not touch any of that in Phase 5.
 
-**Do not build any of the following in Phase 4:**
-- Pipeline automation or scheduling
+**Do not build any of the following in Phase 5:**
 - Auth or user accounts
 - Payments
-- System 2 / Knowledge System (Phase 6)
-- Transcript timeline feature (noted for Phase 5+)
-- Deployment to Vercel (run locally only)
+- Library/history page (Phase 6)
+- Dark/light mode toggle (Phase 6)
+- UI redesign (Phase 6)
+- System 2 / Knowledge System
+- Background job infrastructure
+- Any new features not listed in the task list below
 
 ---
 
 ## GOLDEN RULES — READ BEFORE EVERY ACTION
 
-1. **ONE FILE AT A TIME.** Complete one file, explain it, test it, confirm it works, then move to the next.
-2. **EXPLAIN EVERYTHING IN PLAIN LANGUAGE.** After every file, write 2–3 sentences explaining what was just built and why. No jargon.
-3. **TEST BEFORE MOVING.** Every file has a specific test. Do not proceed until the test passes.
-4. **NEVER SKIP GATES.** The Gate Check at the bottom must fully pass before Phase 5 begins.
-5. **NEVER BUILD AHEAD.** No pipeline automation, no auth, no payments in this phase.
-6. **NEVER USE 'any' IN TYPESCRIPT.** All types must be explicitly defined. Import from `lib/types.ts`.
-7. **MAX 150 LINES PER FILE.** If a file would exceed 150 lines, split it logically and flag it.
-8. **NEVER CALL LLM APIs DIRECTLY.** Always go through `lib/llm/provider.ts`.
-9. **ALWAYS SAVE DATA TO DATABASE.** Builder results go to the `analyses` table with `analysis_type = 'build'`. Save before returning.
-10. **NEVER HARD-CODE THRESHOLDS.** All configurable numbers come from `lib/config.ts`.
-11. **NEVER COMMIT .env.local.** Verify it is in .gitignore before every commit.
-12. **DECODER AND BUILDER ARE ALWAYS SEPARATE LLM CALLS.** Never combine them into one prompt. Never pass the transcript to the Builder. The Builder's only input is the DecoderResult JSON + CreatorContext.
-13. **BUILDER USES GEMINI.** The Builder LLM provider is Gemini 2.5 Flash via BUILDER_LLM_PROVIDER env var. The Decoder uses Groq. These are separate configurations.
-14. **DO NOT REWRITE PHASE 1–3 FILES.** Import from them. Do not modify them unless fixing a bug.
-15. **FLEXIBLE ARCHITECTURE.** The Builder must accept optional `visualDirection` and `audioDirection` parameters even though they are empty at MVP. This prevents structural rewrites when dormant domains are activated.
+1. **ONE TASK AT A TIME.** Complete one task fully, explain what was done, test it, confirm it works, then move to the next.
+2. **EXPLAIN EVERYTHING IN PLAIN LANGUAGE.** After every change, write 2–3 sentences explaining what was just done and why. No jargon.
+3. **TEST BEFORE MOVING.** Every task has a specific test. Do not proceed until the test passes both locally AND on the deployed Vercel URL where relevant.
+4. **THE TRANSCRIPT FIX MUST WORK ON VERCEL.** Working locally is not enough. It must be verified on tedar.vercel.app before moving to Task 2.
+5. **THE PREVIEW FLOW APPLIES EVERYWHERE.** Video mode, channel outliers, niche outliers — all paths land on the transcript preview page. No path auto-runs the analysis.
+6. **NEVER BUILD AHEAD.** Only the tasks in this file. No library page, no theme toggle, no redesign.
+7. **NEVER USE 'any' IN TYPESCRIPT.** All types must be explicitly defined.
+8. **MAX 150 LINES PER FILE.** If a file would exceed this, split it logically and flag it.
+9. **NEVER CALL LLM APIs DIRECTLY.** Always go through `lib/llm/provider.ts`.
+10. **NEVER COMMIT .env.local.** Verify it is in .gitignore before every commit.
+11. **PRESERVE STREAMING INFRASTRUCTURE.** `lib/streaming.ts` and the existing SSE pattern must not be rewritten. Extend it, do not replace it.
+12. **PRESERVE PHASE 3–4 FILES.** The K1 decoder prompt, the Builder prompt, the AnalysisCard and BuilderCard components — all untouched. Only modify files listed in the task list.
 
 ---
 
@@ -150,869 +157,924 @@ Phase 5 builds the full automated pipeline orchestrator — connecting Scout, De
 | What | Technology | Notes |
 |---|---|---|
 | Framework | Next.js 14, App Router, TypeScript | Already installed |
-| Styling | Tailwind CSS + shadcn/ui | Already installed |
+| Deployment | Vercel (free tier) | tedar.vercel.app, auto-deploys from main |
 | Database | Supabase (PostgreSQL) | 11 tables live |
-| Decoder LLM | Groq llama-3.3-70b-versatile | Via LLM_PROVIDER=groq |
-| Builder LLM | Gemini 2.5 Flash | Via BUILDER_LLM_PROVIDER=gemini |
-| LLM Wrapper | lib/llm/provider.ts | NEVER call APIs directly |
-| State management | React useState only | No Redux, Zustand, or external state |
+| Decoder LLM | Groq llama-3.3-70b-versatile | Active |
+| Builder LLM | Gemini 2.5 Flash | Active |
+| Streaming | Server-Sent Events via `lib/streaming.ts` | Already built |
 | Package manager | npm | Do not use yarn, pnpm, or bun |
 
 ---
 
-## CRITICAL: HOW THE BUILDER WORKS — READ BEFORE BUILDING
+## CRITICAL: HOW THE TRANSCRIPT FIX WORKS — READ BEFORE TASK 1
 
-**In plain English:**
+**The core problem in plain English:**
 
-The Builder is the translation layer between "why this video worked" and "how to make one like it."
+YouTube has two different data systems:
 
-The Decoder tells you: *"This video worked because it opened a specific information gap at 0:23, combined with loss aversion framing, producing anxious curiosity."*
+1. **The official YouTube Data API v3** — used for channels, videos, metadata. Requires an API key. Google knows who is calling. Works from any server including Vercel. TEDAR already uses this successfully for Scout.
 
-The Builder takes that and tells you: *"Open your video with this structure: '[Most people in your situation] are [specific negative outcome] because they don't know [thing you're about to explain]. In the next 12 minutes I'll show you exactly how to fix it.' This activates loss aversion before the viewer has consciously evaluated whether to stay — System 1 processing fires before System 2 can reject the premise."*
+2. **Transcripts/captions** — there is NO official YouTube API for transcripts. The `youtube-transcript` package works by pretending to be a browser visiting YouTube.com, scraping the HTML page, and extracting caption data. This unofficial scraping approach is what YouTube blocks from cloud server IPs.
 
-The key requirement of every Builder output: **every instruction must include why it works.** The domain (cognitive_psychology, emotion_science, social_behavioural) and the reason (the specific mechanism) must be attached to every single instruction. A brief without reasoning is generic advice. A brief with reasoning is psychological architecture.
+**The three possible fixes, in order of preference:**
 
-**The Builder's three outputs:**
+**Fix A — Add browser-like headers to the existing package request.** Cheapest fix. Override the fetch headers to look like real Chrome. Sometimes enough to bypass YouTube's bot detection. Start here.
 
-1. **Production Brief** — four sections:
-   - Hook strategy with specific suggested phrasing (not "use a hook" — actual words)
-   - Beat-by-beat content structure with timing guidance
-   - Priority triggers — the 2–3 mechanisms to prioritise
-   - Avoidance notes — what NOT to do based on what was absent or weak
+**Fix B — Call YouTube's internal timedtext API directly.** Bypass the package entirely. Fetch the YouTube watch page HTML, extract the `captionTracks` JSON from `ytInitialPlayerResponse`, fetch the caption file URL directly, parse the XML into plain text. More reliable than scraping.
 
-2. **Script Outline** — four beats:
-   - Hook beat (0–30s): exact approach and suggested opening words
-   - Evidence beats (2–4 beats): how to sequence for curiosity maintenance
-   - Payoff beat: how to resolve the gap satisfyingly
-   - Close beat: optimised for sharing behaviour
+**Fix C — Switch to an alternative package.** Last resort. Packages like `@distube/ytdl-core`, `youtube-captions-scraper` use different techniques.
 
-3. **Domain-backed instructions** — every instruction wrapped with:
-   - `instruction`: what to do
-   - `reason`: why it works (the cognitive mechanism)
-   - `domain`: which knowledge domain this comes from
-   - `confidence`: how strongly the Decoder analysis supports this
+**Testing requirement:** Any fix must be tested with this specific video ID that is guaranteed to have captions: `ewkQ1FLbYSg` (a TED Talk). The fix must succeed on Vercel, not just locally. Deploying and testing on tedar.vercel.app is mandatory before marking Task 1 complete.
 
 ---
 
-## PHASE 4 TASK LIST
+## CRITICAL: HOW THE TRANSCRIPT PREVIEW FLOW WORKS — READ BEFORE TASK 2
 
-Work through these in exact order. One file at a time. Tick each box when complete and tested.
+**The architecture change in plain English:**
 
----
+Right now, `lib/analysis.ts` has one function `decodeVideo(videoUrl)` that does everything in sequence: fetch metadata → fetch transcript → run LLM analysis → save to DB → return result. The frontend calls this as one big operation.
 
-### TASK 1 — Add new types to `lib/types.ts`
+The new architecture splits this into two functions that run at two different times:
 
-**What it is:** The new TypeScript interfaces the Builder needs. Add to the existing file — do not replace what is already there. Export every interface.
+**Function 1 — `prepareVideo(videoUrl)`:**
+- Fetches video metadata (title, channel, thumbnail, views, etc.)
+- Fetches the full transcript
+- Saves metadata and transcript to the database
+- Returns: `{ videoId, videoData, transcript, wordCount, existingAnalysisId }`
+- Does NOT call any LLM. Fast — ~5 seconds.
+- Checks if an analysis already exists for this video and returns the ID if so.
 
-**Add these interfaces:**
+**Function 2 — `analyseVideo(videoId)`:**
+- Takes a Supabase video UUID (not a YouTube video ID)
+- Loads the pre-saved transcript from the database
+- Loads the video metadata from the database
+- Builds the K1 prompt and calls Groq
+- Parses and validates the result
+- Saves the analysis to the database
+- Returns the `DecoderResult`
+- This is where chain-of-thought progress callbacks fire
+- Slower — ~15–30 seconds
 
-```typescript
-// The creator's channel context — adapts the brief to their specific situation
-interface CreatorContext {
-  channelName: string;
-  niche: string;
-  typicalContentStyle?: string;  // Optional — "educational", "entertainment", "storytelling"
-  targetAudience?: string;       // Optional — "beginners", "intermediate professionals"
-}
+**Two API endpoints:**
+- `POST /api/decode/prepare` — calls `prepareVideo`, returns video info + transcript + cached analysis flag. Normal JSON response, no streaming (fast enough to not need it).
+- `POST /api/decode` — **modified** to call `analyseVideo` only (not `prepareVideo`). Streams progress via SSE during the analysis. Takes `videoId` (Supabase UUID) instead of `videoUrl`.
 
-// A single instruction in the production brief — always includes reasoning
-interface BuilderInstruction {
-  instruction: string;           // What to do — specific, not generic
-  reason: string;                // Why it works — the cognitive mechanism
-  domain: 'cognitive_psychology' | 'emotion_science' | 'social_behavioural' |
-          'visual_psychology' | 'audio_music' | 'performance_direction' | 'production_craft';
-  confidence: 'low' | 'medium' | 'high';
-}
+**The frontend flow:**
+1. User arrives at `/decode/[youtubeVideoId]` from any entry point
+2. Client component calls `/api/decode/prepare` with the YouTube URL
+3. Preview renders: video card at top, full transcript in scrollable box below, action button at bottom
+4. If `existingAnalysisId` is returned, the button reads **"View Previous Analysis"** (loads instantly from cache) with a secondary **"Re-analyse"** link
+5. If no previous analysis, the button reads **"Analyse with K1 Framework"**
+6. On click, the client calls `/api/decode` with the videoId and switches to progress display
+7. Chain-of-thought messages stream in during analysis
+8. When the `result` event arrives, the `AnalysisCard` renders below the (now collapsible) transcript preview
+9. The existing `BriefBuilder` component appears below `AnalysisCard` as before
 
-// The production brief — what the creator does before filming
-interface ProductionBrief {
-  hookStrategy: BuilderInstruction;         // How to open — specific phrasing included
-  contentStructure: BuilderInstruction;     // Pacing, structure, pattern interrupt placement
-  priorityTriggers: BuilderInstruction[];   // Top 2-3 mechanisms to prioritise
-  avoidanceNotes: string;                   // What NOT to do — based on weak/absent dimensions
-}
+**Chain-of-thought messages stream during analysis (not prepare).** The prepare step is fast enough to not need progress narration — a simple "Loading transcript..." spinner is sufficient. The progress narrative is reserved for the analysis phase where it actually helps the perceived wait time.
 
-// The script outline — beat by beat
-interface ScriptOutline {
-  hookBeat: BuilderInstruction;             // Opening 30 seconds — exact approach + suggested words
-  evidenceBeats: BuilderInstruction[];      // 2-4 middle beats — sequenced for curiosity
-  payoffBeat: BuilderInstruction;           // Resolution — how to satisfy the gap
-  closeBeat: BuilderInstruction;            // Final 30 seconds — sharing behaviour
-}
+**Analysis phase progress messages (11 total):**
+1. `'Loading transcript from database...'`
+2. `'Transcript loaded — {wordCount} words'`
+3. `'Building K1 analysis prompt...'`
+4. `'Analysing with Groq llama-3.3-70B — identifying psychological triggers...'`
+5. `'Scoring System 1 vs System 2 activation...'`
+6. `'Evaluating information gap architecture...'`
+7. `'Measuring STEPPS dimensions...'`
+8. `'Parsing psychological formula...'`
+9. `'Validating analysis structure...'`
+10. `'Saving to database...'`
+11. `'Analysis complete — confidence: {confidence}'`
 
-// The full Builder output
-interface BuilderResult {
-  creatorContext: CreatorContext;
-  productionBrief: ProductionBrief;
-  scriptOutline: ScriptOutline;
-  sourceAnalysisId: string;       // The analysis ID this brief was built from
-  promptVersion: string;
-}
-
-// For saving to the analyses table (analysis_type = 'build')
-interface BriefRecord {
-  id?: string;
-  videoId: string;               // Supabase UUID — not YouTube ID
-  analysisType: 'build';
-  llmProvider: string;
-  llmModel: string;
-  promptVersion: string;
-  result: BuilderResult;
-  overallScore?: number;         // Not scored for briefs — leave undefined
-  dimensionScores?: undefined;   // Not applicable for briefs
-  processingTimeMs?: number;
-  createdAt?: string;
-}
-```
-
-**Test:** Run `npx tsc --noEmit`. Zero errors. If any existing interface conflicts with a new one, fix the conflict — do not delete existing interfaces.
-
-- [x] New types added to `lib/types.ts` ✓
-- [x] `npx tsc --noEmit` passes with zero errors ✓
+Messages 5, 6, 7 happen AFTER the LLM call starts but before it returns — they are a proxy for what the LLM is actually scoring internally per the K1 prompt. Emit them in rapid succession just after the `generateLLMResponse` call begins. This is acceptable because it matches what the K1 prompt actually instructs the model to do.
 
 ---
 
-### TASK 2 — Add Phase 4 database functions to `lib/supabase.ts`
+## PHASE 5 TASK LIST
 
-**What it is:** Two new database functions for saving and retrieving Builder results. Add at the end of the existing file. Do not modify existing functions.
-
-**Check file length first.** If `lib/supabase.ts` is already near 150 lines after Phase 3 additions, create `lib/supabase-builder.ts` for these functions and flag it.
-
-**Functions to add:**
-
-```typescript
-// Save a Builder result to the analyses table (analysis_type = 'build')
-// Uses select-then-insert pattern — no upsert (same pattern as Phase 3)
-// After saving, update videos.has_analysis = true (already true from decode, but confirm)
-export async function upsertBrief(brief: BriefRecord): Promise<string>
-// Returns the record ID
-
-// Retrieve a saved brief by the analysis ID that generated it
-// analysisId = the ID of the 'decode' analysis record the brief was built from
-export async function getBriefByAnalysisId(
-  analysisId: string
-): Promise<BriefRecord | null>
-// Returns the brief record if it exists, null if not
-```
-
-**Important — the analyses table stores both decode and build records:**
-
-The same `analyses` table holds both types. When you call `getBriefByAnalysisId`, query like this:
-
-```typescript
-const { data } = await supabase
-  .from('analyses')
-  .select('*')
-  .eq('analysis_type', 'build')
-  .eq('result->sourceAnalysisId', analysisId)  // sourceAnalysisId is inside the JSONB result column
-  .single();
-```
-
-**Plain English explanation:** The Builder saves its output to the same database table as the Decoder — the analyses table. It is tagged differently (`analysis_type = 'build'` vs `'decode'`). This keeps all analysis data in one place. When a creator comes back to view their brief, we look it up by the decode analysis ID that produced it.
-
-**Test:** Run `npx tsc --noEmit`. Zero errors.
-
-- [x] Phase 4 database functions added ✓
-- [x] TypeScript check passes ✓
+Work through these in exact order. One task at a time. Tick each box when complete and tested.
 
 ---
 
-### TASK 3 — `lib/prompts/k1-builder.ts`
+### TASK 1 — Fix transcript fetching for Vercel
 
-**What it is:** The Builder system prompt. This is the second most important file in the project after the K1 Decoder prompt. The Builder prompt must produce output that is prescriptive and specific — not analytical. It speaks in imperatives, not observations.
-
-**This file will exceed 150 lines — flagging now.** The Builder prompt requires sufficient detail to prevent generic output. Keep it in one file. Do not split.
-
-**Function signature:**
-
-```typescript
-export const BUILDER_PROMPT_VERSION = 'k1-builder-v1.0';
-
-export function buildBuilderPrompt(
-  decoderResult: DecoderResult,
-  creatorContext: CreatorContext,
-  options?: {
-    visualDirection?: string;   // Reserved for future — ignore if undefined
-    audioDirection?: string;    // Reserved for future — ignore if undefined
-  }
-): { systemPrompt: string; userMessage: string }
-```
-
-The `options` parameter with `visualDirection` and `audioDirection` must be accepted but ignored at MVP. This is the Flexible Architecture rule — it prevents a structural rewrite when dormant domains are activated.
-
----
-
-**THE SYSTEM PROMPT MUST CONTAIN THESE SEVEN SECTIONS IN ORDER:**
-
----
-
-**Section 1 — Identity & Voice (100–150 words)**
-
-The Builder is a specialist creative director, not an analyst. It does not explain what the Decoder found — it translates findings into specific creative decisions. Its voice is direct, imperative, and specific. It never gives generic advice. Every instruction it produces must be specific enough that a creator could not apply it to a video in a different niche without modification.
-
-Opening instruction to include verbatim:
-
-> "You are TEDAR's Builder — a specialist creative director that translates psychological analysis into specific production decisions. You do not explain why a video worked — the Decoder already did that. You tell the creator exactly what to do, in what sequence, with what specific language, to replicate the formula. Every instruction you produce must be specific to this creator's niche and this video's formula. If an instruction could apply to any video, it is wrong. Rewrite it until it cannot."
-
----
-
-**Section 2 — The Translation Rule (100–150 words)**
-
-The Builder takes each high-scoring psychological dimension and translates it into a concrete creative decision. This is the core job.
-
-The translation rule — include this explicitly:
-
-```
-High information gap score → Specific hook structure with suggested phrasing
-High loss aversion score → Specific framing language using loss not gain
-High STEPPS social currency → Specific insider-knowledge positioning language
-High STEPPS practical value → Specific actionable format with timing
-High emotion score → Specific emotional trigger with arousal classification
-Low story score → Note in avoidanceNotes: do not add narrative if the formula works without it
-```
-
-The Builder only translates what the Decoder found. It does not invent mechanisms that were not present in the analysis. If a dimension scored below 40, it does not appear in the productionBrief or scriptOutline as a priority trigger — it appears only in avoidanceNotes if relevant.
-
----
-
-**Section 3 — Instruction Quality Rules (200–250 words)**
-
-Every instruction produced must meet these standards. State each explicitly:
-
-**Specificity rule:** Every `instruction` field must name the creator's niche and the specific mechanism. Bad: "Use a hook that creates curiosity." Good: "Open your [niche] video with a direct statement that your viewer is currently experiencing [specific problem relevant to niche] — name the cost before naming the solution."
-
-**Reasoning rule:** Every `reason` field must explain the cognitive mechanism — not just name it. Bad: "This activates loss aversion." Good: "This activates loss aversion framing — the viewer's brain weights the implied loss of staying uninformed as approximately twice the value of the potential gain from watching. They stay because not staying feels costly."
-
-**Phrasing rule:** Every `hookBeat` and at least two `evidenceBeats` must include suggested phrasing — words the creator can actually use or adapt. Not a description of what to say. Actual suggested words.
-
-**Domain accuracy rule:** Use only these domain values exactly as written — `cognitive_psychology`, `emotion_science`, `social_behavioural`. Do not invent domain names. Do not use `visual_psychology`, `audio_music`, `performance_direction`, or `production_craft` — these are dormant at MVP.
-
-**Confidence calibration:**
-- `high`: the Decoder analysis directly supports this instruction with a score of 70+
-- `medium`: the Decoder analysis supports this with a score of 50–70
-- `low`: this is a reasonable extension from the detected pattern but not directly evidenced
-
----
-
-**Section 4 — Adapting to Creator Context (100–150 words)**
-
-Every instruction must be adapted to the `creatorContext` provided. The niche and channel name are not decoration — they must appear in the actual instruction text.
-
-Rules:
-- The hook phrasing must reference the creator's niche specifically
-- The evidence beats must be sequenced for the attention patterns of that niche's audience
-- The close beat must reference what sharing behaviour looks like in that niche
-- If `typicalContentStyle` is provided — honour it. An entertainment creator and an educational creator with the same psychological formula need different instructions.
-- If `targetAudience` is provided — hook language must speak directly to that audience
-
-The test: if you replaced the creator's niche with a different niche and the instructions still worked — they are not adapted enough. Rewrite them.
-
----
-
-**Section 5 — The Script Outline Rules (150–200 words)**
-
-The `scriptOutline` is the most common place generic output appears. These rules prevent it:
-
-**hookBeat must contain:**
-- The specific mechanism being activated (from the Decoder's primaryMechanism)
-- The suggested opening words — actual phrasing, not a description of phrasing
-- The timing constraint: what must be established within the first 30 seconds
-
-**evidenceBeats must:**
-- Number 2–4 beats depending on the video's scoring pattern
-- Each beat must name what psychological mechanism it maintains
-- At least one beat must plant a secondary information gap before the primary is resolved
-- Beat sequence must build tension — each beat should make the viewer feel they are closer to the answer but not there yet
-
-**payoffBeat must:**
-- Resolve the primary gap opened in the hookBeat fully and satisfyingly
-- Name the specific information being delivered
-- Include a note: if the payoff disappoints, it damages trust and suppresses future sharing
-
-**closeBeat must:**
-- Activate STEPPS Practical Value or Social Currency — whichever scored higher
-- Suggest a forward-looking statement the creator can use
-- Be designed for sharing — the viewer should want to send this ending to someone
-
----
-
-**Section 6 — Output Format (200–300 words)**
-
-Return ONLY valid JSON matching the `BuilderResult` type exactly. No markdown. No backticks. No explanation before or after. Response must start with `{` and end with `}`.
-
-Include this quality example showing what a CORRECT builder instruction looks like:
-
-```json
-{
-  "creatorContext": {
-    "channelName": "FinanceWithShayan",
-    "niche": "personal finance",
-    "typicalContentStyle": "educational"
-  },
-  "productionBrief": {
-    "hookStrategy": {
-      "instruction": "Open with a direct statement of a financial mistake and its monthly cost — without naming the solution. Suggested opening: 'Most people saving money in a standard savings account are losing between £200 and £400 every year without knowing it. In this video I'll show you exactly where it's going and how to stop it in the next 10 minutes.' Do not reveal the solution in the hook.",
-      "reason": "This activates loss aversion framing before System 1 processes the rational value of the content. The viewer's brain weights the implied ongoing loss (money leaving their account monthly) as twice the psychological weight of an equivalent gain. They stay because not staying feels costly — Kahneman's asymmetric loss framing at 2:1 impact ratio.",
-      "domain": "cognitive_psychology",
-      "confidence": "high"
-    },
-    "contentStructure": {
-      "instruction": "Structure as: problem establishment (2 min) → mechanism explanation (3 min) → secondary gap plant (1 min) → solution reveal (3 min) → implementation steps (2 min) → close. Plant the secondary gap ('but that's only half the problem') at the 5-minute mark before the primary gap resolves.",
-      "reason": "This pacing maintains the information gap through the video's midpoint, preventing the retention drop that occurs when viewers sense the value has already been delivered. Secondary gaps reset the attention clock.",
-      "domain": "cognitive_psychology",
-      "confidence": "high"
-    },
-    "priorityTriggers": [
-      {
-        "instruction": "Frame every piece of advice as stopping a loss, not gaining a benefit. 'Stop losing £X' not 'Earn £X more'.",
-        "reason": "Loss framing produces 2x the psychological impact of gain framing per Kahneman's prospect theory. This video's loss aversion score of 84 indicates the formula depends on this framing being maintained throughout.",
-        "domain": "cognitive_psychology",
-        "confidence": "high"
-      }
-    ],
-    "avoidanceNotes": "Story arc scored 34 — do not add personal narrative or case studies. This formula works without them and adding story structure would dilute the practical value signal that scored 85."
-  },
-  "scriptOutline": {
-    "hookBeat": {
-      "instruction": "Suggested words: 'Most people saving money in a [savings account / ISA / current account] are losing between [£X and £Y] every year — and it's not their fault because nobody explains this. In the next [X] minutes I'll show you exactly where it's going and the three steps to stop it.' Deliver directly to camera. No preamble. No intro music over this line.",
-      "reason": "Opening with a direct loss statement activates System 1 before System 2 can evaluate whether to engage. The viewer feels the loss before they decide whether the video is worth watching — removing the rational skip decision.",
-      "domain": "cognitive_psychology",
-      "confidence": "high"
-    },
-    "evidenceBeats": [
-      {
-        "instruction": "Beat 1 (minute 1-3): Establish the scale of the problem using a specific number. 'The average UK saver is leaving £340 per year in avoidable fees.' Name the mechanism — not just that fees exist, but exactly how they compound. Make the viewer feel the gap more acutely before providing relief.",
-        "reason": "Deepening the problem before offering the solution maintains the information gap in open state and increases the psychological weight of the eventual payoff.",
-        "domain": "cognitive_psychology",
-        "confidence": "high"
-      }
-    ],
-    "payoffBeat": {
-      "instruction": "Deliver the complete, specific answer with implementable steps. Name the exact product, account, or action. A payoff that says 'it depends on your situation' after this level of anticipation damages trust and suppresses sharing. The payoff must fully resolve the specific gap opened in the hook.",
-      "reason": "Resolution of the information gap produces a dopamine response. If the resolution is incomplete or vague, the emotional response is frustration rather than satisfaction — suppressing the sharing behaviour the STEPPS framework predicts.",
-      "domain": "cognitive_psychology",
-      "confidence": "high"
-    },
-    "closeBeat": {
-      "instruction": "Suggested close: 'If you switch to [specific action] this week, you'll stop losing [specific amount] by [specific timeframe]. That's it. One change.' Follow with: 'Share this with one person you know who's still using a [standard account] — they're losing money right now.' This activates STEPPS Social Currency — the sharer looks knowledgeable.",
-      "reason": "Forward-looking specific outcomes activate STEPPS Practical Value. The share prompt activates Social Currency — the viewer wants to be the person who told their friend about this. Both mechanisms in the close = higher sharing rate.",
-      "domain": "cognitive_psychology",
-      "confidence": "high"
-    }
-  },
-  "sourceAnalysisId": "uuid-of-decode-analysis",
-  "promptVersion": "k1-builder-v1.0"
-}
-```
-
----
-
-**Section 7 — Anti-Patterns (100–150 words)**
-
-The Builder must never produce any of the following:
-
-**Anti-pattern 1: Generic instructions that apply to any video.**
-Bad: "Create a hook that generates curiosity."
-Good: "Open your [personal finance] video with a direct statement that your viewer is currently losing [specific resource] — name the cost before the solution."
-
-**Anti-pattern 2: Instructions without phrasing.**
-The hookBeat and at least two evidenceBeats must contain suggested words — not descriptions of what to say.
-
-**Anti-pattern 3: Inventing mechanisms the Decoder did not find.**
-If steppsSocialCurrency scored 30, do not make it a priority trigger. Build from what is actually there.
-
-**Anti-pattern 4: Avoidance notes that are vague.**
-Bad: "Avoid being too generic."
-Good: "Story arc scored 28 — do not add narrative structure. This formula works on practical value alone."
-
----
-
-**After building the prompt, test it manually before Task 4:**
-
-```bash
-npx ts-node -e "
-import('./lib/supabase').then(async db => {
-  // Get a real decode analysis from the database
-  const { data } = await db.supabaseAdmin
-    .from('analyses')
-    .select('*')
-    .eq('analysis_type', 'decode')
-    .limit(1)
-    .single();
-
-  if (!data) { console.log('No decode analyses found'); return; }
-  
-  const { buildBuilderPrompt } = await import('./lib/prompts/k1-builder');
-  const { generateLLMResponse } = await import('./lib/llm/provider');
-  
-  const context = { channelName: 'TestChannel', niche: 'personal finance' };
-  const { systemPrompt, userMessage } = buildBuilderPrompt(data.result, context);
-  
-  // Temporarily use gemini for this test
-  process.env.LLM_PROVIDER = 'gemini';
-  const response = await generateLLMResponse(systemPrompt, userMessage, {
-    temperature: 0.3, maxTokens: 3000
-  });
-  
-  console.log('--- RAW RESPONSE (first 2000 chars) ---');
-  console.log(response.text.slice(0, 2000));
-})
-"
-```
-
-Evaluate the raw output against three questions:
-1. Does the hookStrategy contain actual suggested phrasing — real words, not a description?
-2. Does each instruction name the creator's niche specifically?
-3. Does each reason explain the cognitive mechanism — not just name it?
-
-If any answer is No: revise the relevant section and re-test before Task 4.
-
-- [x] `lib/prompts/k1-builder.ts` created ✓
-- [x] `BUILDER_PROMPT_VERSION` constant set ✓
-- [x] `options` parameter with `visualDirection` and `audioDirection` accepted ✓
-- [x] TypeScript check passes ✓
-- [x] Manual prompt test run against a real decode result ✓
-- [x] All three evaluation questions answered Yes ✓
-
----
-
-### TASK 4 — `lib/builder.ts`
-
-**What it is:** The Builder orchestrator. A single function that takes a decode analysis ID and creator context, retrieves the DecoderResult, builds the prompt, calls Gemini, parses and validates the result, saves everything to the database, and returns the structured brief.
+**What it is:** Rewrite `lib/youtube/transcript.ts` to work on Vercel's cloud servers. The fix must be verified on the live URL, not just locally.
 
 **Build instructions:**
-- Import `getBriefByAnalysisId`, `upsertBrief`, `getAnalysisByVideoId` from `lib/supabase.ts`
-- Import `buildBuilderPrompt`, `BUILDER_PROMPT_VERSION` from `lib/prompts/k1-builder.ts`
-- Import `generateLLMResponse` from `lib/llm/provider.ts`
-- Import `stripJsonFences` from `lib/llm/provider.ts`
 
-**Function signature:**
+Start with **Fix A** (browser-like headers). If testing on Vercel fails, move to **Fix B** (direct timedtext API). If that also fails, move to **Fix C** (alternative package).
 
-```typescript
-export async function buildBrief(
-  analysisId: string,           // ID of the 'decode' analysis to build from
-  creatorContext: CreatorContext,
-  options?: {
-    visualDirection?: string;   // Reserved — ignore if undefined
-    audioDirection?: string;    // Reserved — ignore if undefined
-    forceRefresh?: boolean;     // If true, bypass cache and re-run
-  }
-): Promise<BuilderResult>
-```
+**Fix A — Browser-like headers:**
 
-**Pipeline steps in exact order:**
-
-```
-1. Check cache: getBriefByAnalysisId(analysisId)
-   → If brief exists AND forceRefresh !== true: return brief.result immediately
-2. Load the decode analysis: getAnalysisByVideoId approach — 
-   query analyses table WHERE id = analysisId AND analysis_type = 'decode'
-   → If not found: throw Error('Decode analysis not found. Run the Decoder first.')
-3. Extract decoderResult from the analysis record
-4. buildBuilderPrompt(decoderResult, creatorContext, options)
-5. Record start time
-6. Set LLM_PROVIDER temporarily to BUILDER_LLM_PROVIDER env var for this call
-   OR: pass provider override to generateLLMResponse
-7. generateLLMResponse(systemPrompt, userMessage, { temperature: 0.3, maxTokens: 3000 })
-8. Record processingTimeMs
-9. stripJsonFences(response.text) → JSON.parse → validate shape against BuilderResult
-   → If parse fails: retry once
-   → If second attempt fails: throw Error('Brief could not be generated. Please try again.')
-10. Add sourceAnalysisId and promptVersion to the result
-11. upsertBrief({
-      videoId: analysis.videoId,
-      analysisType: 'build',
-      llmProvider: process.env.BUILDER_LLM_PROVIDER ?? 'gemini',
-      llmModel: 'gemini-2.5-flash',
-      promptVersion: BUILDER_PROMPT_VERSION,
-      result: builderResult,
-      processingTimeMs
-    })
-12. Return builderResult
-```
-
-**Handling the dual LLM provider:**
-
-The Builder must use Gemini, not Groq. The cleanest implementation: read `BUILDER_LLM_PROVIDER` from environment separately from `LLM_PROVIDER`. Add this to `.env.local`:
-
-```bash
-BUILDER_LLM_PROVIDER=gemini
-```
-
-In `lib/builder.ts`, before calling `generateLLMResponse`, temporarily override the provider:
+Check if the `youtube-transcript` package supports custom fetch options. If yes, configure with these headers:
 
 ```typescript
-const originalProvider = process.env.LLM_PROVIDER;
-process.env.LLM_PROVIDER = process.env.BUILDER_LLM_PROVIDER ?? 'gemini';
-const response = await generateLLMResponse(systemPrompt, userMessage, options);
-process.env.LLM_PROVIDER = originalProvider; // restore
+const browserHeaders = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'DNT': '1',
+  'Connection': 'keep-alive',
+  'Upgrade-Insecure-Requests': '1',
+};
 ```
 
-This is a clean MVP approach that does not require changes to `lib/llm/provider.ts`.
+If the package does not support custom headers, proceed to Fix B.
 
-**Plain English explanation:** This function does for the Builder what `lib/analysis.ts` does for the Decoder — it orchestrates the full pipeline so the API route only needs to call one function. It checks if a brief already exists for this analysis (cache), loads the Decoder's findings, builds the prompt, calls Gemini, parses the response, saves the result, and returns it.
+**Fix B — Direct timedtext API (recommended if Fix A fails):**
 
-**Test:** Create `scripts/test-builder.ts`:
+Bypass the package entirely. Implement transcript fetch manually:
 
 ```typescript
-// scripts/test-builder.ts
-import { buildBrief } from '../lib/builder';
-import { supabaseAdmin } from '../lib/supabase';
+async function fetchTranscriptDirect(videoId: string): Promise<string> {
+  // 1. Fetch watch page HTML
+  const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const pageResponse = await fetch(watchUrl, { headers: browserHeaders });
+  if (!pageResponse.ok) throw new Error('TRANSCRIPT_FETCH_FAILED');
+  const html = await pageResponse.text();
+
+  // 2. Extract captionTracks from ytInitialPlayerResponse
+  const match = html.match(/"captionTracks":(\[.*?\])/);
+  if (!match) throw new Error('NO_CAPTIONS');
+
+  const captionTracks = JSON.parse(match[1]);
+  const track = captionTracks.find((t: { languageCode: string }) => t.languageCode === 'en')
+    ?? captionTracks[0];
+  if (!track?.baseUrl) throw new Error('NO_CAPTIONS');
+
+  // 3. Fetch the caption XML
+  const captionResponse = await fetch(track.baseUrl, { headers: browserHeaders });
+  if (!captionResponse.ok) throw new Error('TRANSCRIPT_FETCH_FAILED');
+  const captionXml = await captionResponse.text();
+
+  // 4. Strip XML tags, decode entities, collapse whitespace
+  const text = captionXml
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (text.length < 50) throw new Error('NO_CAPTIONS');
+  return text;
+}
+```
+
+**Requirements for the final `lib/youtube/transcript.ts`:**
+
+- Export `getTranscript(videoId: string): Promise<string>` — same signature as current
+- Apply `MAX_TRANSCRIPT_WORDS` truncation (2,500) from `lib/config.ts`
+- Throw clear errors: `'NO_CAPTIONS'` for genuinely uncaptioned videos, `'TRANSCRIPT_FETCH_FAILED'` for network/blocking issues
+- Log which method is active via `console.log('[transcript] method: direct-timedtext')` so Vercel logs show which fix works
+
+**Plain English explanation:** This file is the one piece that pulls the spoken words out of a YouTube video. The package we were using gets blocked by YouTube when running from cloud servers. The fix either adds browser disguise headers or bypasses the package entirely and calls YouTube's caption endpoints directly.
+
+**Test locally first:**
+
+Create `scripts/test-transcript.ts`:
+```typescript
+import { getTranscript } from '../lib/youtube/transcript';
 
 async function main() {
-  // Get a real decode analysis from the database
-  const { data: analyses } = await supabaseAdmin
-    .from('analyses')
-    .select('id, video_id, result')
-    .eq('analysis_type', 'decode')
-    .limit(2);
-
-  if (!analyses || analyses.length === 0) {
-    console.log('❌ No decode analyses in database. Run the decoder first.');
-    return;
+  const videoId = 'ewkQ1FLbYSg'; // TED Talk with confirmed captions
+  try {
+    console.log(`Fetching transcript for ${videoId}...`);
+    const transcript = await getTranscript(videoId);
+    console.log(`✅ Success — ${transcript.split(/\s+/).length} words`);
+    console.log(`First 200 chars: ${transcript.slice(0, 200)}`);
+  } catch (e) {
+    console.log(`❌ Failed: ${e instanceof Error ? e.message : e}`);
   }
+}
+main().catch(console.error);
+```
 
-  // Test with two different creator contexts to verify adaptation
-  const contexts = [
-    { channelName: 'FinanceWithShayan', niche: 'personal finance' },
-    { channelName: 'TechReviewsUK', niche: 'tech reviews' },
-  ];
+Run: `npx ts-node scripts/test-transcript.ts`
 
-  for (let i = 0; i < Math.min(analyses.length, 2); i++) {
-    const analysis = analyses[i];
-    const context = contexts[i];
+**Test on Vercel (MANDATORY):**
 
-    console.log(`\n--- Building brief ${i + 1} for: ${context.channelName} ---`);
-    const start = Date.now();
+1. Commit and push to GitHub
+2. Wait for Vercel to auto-deploy (~2 minutes)
+3. Go to https://tedar.vercel.app
+4. Paste a YouTube video URL that has captions
+5. Confirm the transcript fetch succeeds
 
-    try {
-      const result = await buildBrief(analysis.id, context);
-      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+**The fix is only confirmed working when transcript fetch succeeds on https://tedar.vercel.app — NOT just locally.**
 
-      console.log(`✅ Brief built in ${elapsed}s`);
-      console.log(`Hook strategy (first 150 chars): ${result.productionBrief.hookStrategy.instruction.slice(0, 150)}...`);
-      console.log(`Hook domain: ${result.productionBrief.hookStrategy.domain}`);
-      console.log(`Hook confidence: ${result.productionBrief.hookStrategy.confidence}`);
-      console.log(`Priority triggers: ${result.productionBrief.priorityTriggers.length}`);
-      console.log(`Evidence beats: ${result.scriptOutline.evidenceBeats.length}`);
-      console.log(`Script hook (first 100 chars): ${result.scriptOutline.hookBeat.instruction.slice(0, 100)}...`);
-    } catch (e) {
-      console.log(`❌ Failed: ${e instanceof Error ? e.message : e}`);
-    }
+- [ ] `lib/youtube/transcript.ts` rewritten
+- [ ] `scripts/test-transcript.ts` created
+- [ ] Local test passes with video ID `ewkQ1FLbYSg`
+- [ ] Pushed to GitHub and Vercel redeployed
+- [ ] **Live test on tedar.vercel.app confirmed working**
+- [ ] TypeScript check passes: `npx tsc --noEmit`
+
+---
+
+### TASK 2 — Transcript Preview & Manual Decode Flow
+
+This task is the largest in Phase 5. It restructures the decode flow to show the transcript first, then run analysis on explicit user action. It has six sub-steps. Complete them in order — do not jump ahead.
+
+---
+
+#### TASK 2A — Split `decodeVideo` into `prepareVideo` and `analyseVideo`
+
+**What it is:** Refactor `lib/analysis.ts` so the pipeline becomes two separable operations.
+
+**New structure:**
+
+```typescript
+export type DecodeProgressCallback = (message: string) => void;
+
+export interface PrepareResult {
+  videoId: string;                    // Supabase UUID
+  youtubeVideoId: string;
+  videoData: VideoData;
+  transcript: string;
+  wordCount: number;
+  existingAnalysisId: string | null;  // If already decoded before, return the analysis ID
+}
+
+export async function prepareVideo(videoUrl: string): Promise<PrepareResult>
+
+export async function analyseVideo(
+  videoId: string,                    // Supabase UUID
+  options?: {
+    forceRefresh?: boolean;
+    onProgress?: DecodeProgressCallback;
   }
+): Promise<DecoderResult>
+```
 
-  // Test cache: run the same analysis again — should return instantly
-  console.log(`\n--- Testing cache (same analysis, should be instant) ---`);
-  const start = Date.now();
-  await buildBrief(analyses[0].id, contexts[0]);
-  const elapsed = Date.now() - start;
-  console.log(elapsed < 1000
-    ? `✅ Cache working — returned in ${elapsed}ms`
-    : `⚠️ Cache may not be working — took ${elapsed}ms`
-  );
+**`prepareVideo` pipeline steps:**
+1. Extract YouTube video ID from URL
+2. Check if video exists in Supabase `videos` table by `youtube_video_id`
+3. If exists: load existing `VideoData`, skip metadata fetch
+4. If not: call YouTube Data API v3 to fetch metadata, upsert to `videos` table, get Supabase UUID
+5. Check if transcript exists in `transcripts` table for this video
+6. If exists: load existing transcript, skip fetch
+7. If not: call `getTranscript(youtubeVideoId)`, upsert to `transcripts` table
+8. Check if any decode analysis exists for this video (`analyses` table, `analysis_type = 'decode'`)
+9. Return `PrepareResult` with all data and the cached analysis ID if found (null otherwise)
 
-  // Verify briefs appear in Supabase
-  const { data: briefs } = await supabaseAdmin
-    .from('analyses')
-    .select('id, analysis_type, llm_model')
-    .eq('analysis_type', 'build');
+**`analyseVideo` pipeline steps:**
+1. Load video record from Supabase by UUID
+2. Load transcript from Supabase for this video
+3. If `forceRefresh !== true`: check for existing analysis, return it if found
+4. Emit progress: `'Loading transcript from database...'`
+5. Emit progress: `'Transcript loaded — {wordCount} words'`
+6. Emit progress: `'Building K1 analysis prompt...'`
+7. Build the decoder prompt using `buildDecoderPrompt(videoData, transcript)`
+8. Emit progress: `'Analysing with Groq llama-3.3-70B — identifying psychological triggers...'`
+9. Emit progress: `'Scoring System 1 vs System 2 activation...'` (just before LLM call)
+10. Emit progress: `'Evaluating information gap architecture...'` (just before LLM call)
+11. Emit progress: `'Measuring STEPPS dimensions...'` (just before LLM call)
+12. Call `generateLLMResponse` (the actual LLM work happens here)
+13. Emit progress: `'Parsing psychological formula...'`
+14. Strip JSON fences, parse, retry once on failure
+15. Emit progress: `'Validating analysis structure...'`
+16. Validate against `DecoderResult` type
+17. Emit progress: `'Saving to database...'`
+18. `upsertAnalysis` to save the result
+19. Emit progress: `'Analysis complete — confidence: {confidence}'`
+20. Return `DecoderResult`
 
-  console.log(`\n✅ Briefs in Supabase: ${briefs?.length ?? 0}`);
-  console.log('Check Supabase analyses table — should see rows with analysis_type = build');
+**Important:** The existing `decodeVideo` function can be kept as a convenience wrapper that calls `prepareVideo` then `analyseVideo` in sequence. This preserves backwards compatibility if anything else in the codebase calls it. Or delete it if nothing else uses it — check imports first with grep.
+
+**Plain English explanation:** Before, the decode function was one big block that fetched the video, pulled the transcript, and ran the analysis all at once. Now it is two separate functions: `prepareVideo` gets the transcript ready for the user to review (fast), and `analyseVideo` runs the actual AI analysis when the user decides to commit (slower). This split is what makes the new preview flow possible.
+
+**Test:**
+```bash
+npx tsc --noEmit
+```
+
+Create a quick integration test `scripts/test-prepare.ts`:
+```typescript
+import { prepareVideo, analyseVideo } from '../lib/analysis';
+
+async function main() {
+  const videoUrl = 'https://www.youtube.com/watch?v=ewkQ1FLbYSg';
+
+  console.log('--- Preparing video ---');
+  const prepared = await prepareVideo(videoUrl);
+  console.log(`✅ Video: ${prepared.videoData.title}`);
+  console.log(`✅ Word count: ${prepared.wordCount}`);
+  console.log(`✅ Existing analysis: ${prepared.existingAnalysisId ?? 'none'}`);
+
+  console.log('\n--- Analysing video ---');
+  const result = await analyseVideo(prepared.videoId, {
+    onProgress: (msg) => console.log(`  → ${msg}`),
+  });
+  console.log(`✅ Analysis complete — overall score: ${result.engagementScore.overall}`);
 }
 
 main().catch(console.error);
 ```
 
-Run with: `npx ts-node scripts/test-builder.ts`
-
-**After running, manually evaluate the hookStrategy from each brief:**
-- Does it contain actual suggested words a creator could use?
-- Does it name the creator's specific niche?
-- Does the reason explain the cognitive mechanism — not just name it?
-
-If both briefs pass: proceed to Task 5. If not: identify which section of the Builder prompt produced the weak output and fix only that section. Re-test before proceeding.
-
-- [x] `lib/builder.ts` created ✓
-- [x] `BUILDER_LLM_PROVIDER=gemini` added to `.env.local` ✓
-- [x] `scripts/test-builder.ts` created ✓
-- [x] Both briefs build without errors ✓
-- [x] Cache returns in under 1 second ✓
-- [x] Briefs verified in Supabase `analyses` table with `analysis_type = 'build'` ✓
-- [x] Manual quality check: hookStrategy contains specific phrasing, not generic advice ✓
+- [ ] `lib/analysis.ts` split into `prepareVideo` + `analyseVideo`
+- [ ] `DecodeProgressCallback` and `PrepareResult` types exported
+- [ ] All 11 progress messages emit in correct order in `analyseVideo`
+- [ ] `scripts/test-prepare.ts` runs end-to-end locally
+- [ ] TypeScript check passes
 
 ---
 
-### TASK 5 — `app/api/build/route.ts`
+#### TASK 2B — Create `/api/decode/prepare` endpoint
 
-**What it is:** The API endpoint that the browser calls when the founder clicks "Build Production Brief." Receives the analysis ID and creator context, calls `buildBrief`, and returns the result.
+**What it is:** A new API route that the client calls when landing on the decode page. Returns video metadata, transcript, and the existing analysis ID if any.
 
-**Build instructions:**
-- POST handler only
-- Read from request body: `analysisId: string`, `channelName: string`, `niche: string`
-- Optional from body: `typicalContentStyle?: string`, `targetAudience?: string`, `forceRefresh?: boolean`
-- Validate that `analysisId`, `channelName`, and `niche` are all present — return 400 if any missing
-- Construct `CreatorContext` from the request body fields
-- Call `buildBrief(analysisId, creatorContext, { forceRefresh })`
-- Return standard response format
+**File:** `app/api/decode/prepare/route.ts`
 
 **Request body:**
 ```typescript
 {
-  analysisId: string;
-  channelName: string;
-  niche: string;
-  typicalContentStyle?: string;
-  targetAudience?: string;
+  videoUrl: string;
+}
+```
+
+**Response — success:**
+```typescript
+{
+  data: {
+    videoId: string;              // Supabase UUID
+    youtubeVideoId: string;
+    videoData: VideoData;
+    transcript: string;
+    wordCount: number;
+    existingAnalysisId: string | null;
+  },
+  meta: {
+    processingTimeMs: number;
+  }
+}
+```
+
+**Response — error:**
+```typescript
+{
+  error: string;
+  code: 'INVALID_URL' | 'VIDEO_NOT_FOUND' | 'NO_TRANSCRIPT' | 'TRANSCRIPT_FETCH_FAILED' | 'INTERNAL_ERROR';
+}
+```
+
+**Implementation:**
+- POST handler only
+- Validate `videoUrl` is present — return 400 with `INVALID_URL` if missing
+- Call `prepareVideo(videoUrl)`
+- Catch errors and map to the error codes above
+- Set `export const maxDuration = 30;` at top of file for Vercel
+- No streaming needed — regular JSON response is fine (fast operation)
+
+**Plain English explanation:** This endpoint is the door between the browser and the new prepare step. The browser sends the video URL, the server fetches everything needed for the preview, and returns it. It is a normal request/response — no streaming — because 5 seconds is fast enough to not need a progress narrator.
+
+**Test:**
+```bash
+# With npm run dev running:
+curl -X POST http://localhost:3000/api/decode/prepare \
+  -H "Content-Type: application/json" \
+  -d '{"videoUrl": "https://www.youtube.com/watch?v=ewkQ1FLbYSg"}' \
+  --max-time 30
+```
+
+Expected: JSON response with `videoData`, `transcript`, `wordCount`, `existingAnalysisId`.
+
+- [ ] `app/api/decode/prepare/route.ts` created
+- [ ] Returns full prepare result JSON locally
+- [ ] Error cases return correct status codes
+- [ ] TypeScript check passes
+
+---
+
+#### TASK 2C — Modify `/api/decode` to run analysis only
+
+**What it is:** The existing `app/api/decode/route.ts` currently does the full decodeVideo flow. Update it to accept a `videoId` (Supabase UUID) and run only `analyseVideo`. Stream progress via the existing SSE infrastructure.
+
+**New request body:**
+```typescript
+{
+  videoId: string;           // Supabase UUID — NOT the YouTube video ID
   forceRefresh?: boolean;
 }
 ```
 
-**Response body:**
+**SSE events streamed:**
+```
+data: {"type":"progress","message":"Loading transcript from database..."}\n\n
+data: {"type":"progress","message":"Transcript loaded — 2347 words"}\n\n
+... (all 11 progress messages)
+data: {"type":"result","data":{...DecoderResult...}}\n\n
+```
+
+**Error event:**
+```
+data: {"type":"error","message":"...","code":"..."}\n\n
+```
+
+**Implementation notes:**
+- Keep the existing SSE setup from `lib/streaming.ts` — do not rewrite it
+- The route reads the videoId from the request body, calls `analyseVideo(videoId, { onProgress, forceRefresh })` where `onProgress` writes each message as a `progress` event
+- On success, emit `result` event with the full `DecoderResult`
+- On error, emit `error` event with message and code
+- Set `export const maxDuration = 60;` at top of file
+
+**Important:** This is a breaking change to the existing `/api/decode` API. The old signature accepted `videoUrl`. The new signature accepts `videoId`. Grep the codebase for `/api/decode` calls and verify all call sites are updated in Task 2F.
+
+**Plain English explanation:** This endpoint used to do the whole job in one call. Now it does only the AI analysis part — the preview step is handled by a different endpoint. This change is what makes streaming the chain-of-thought progress clean: only the slow part streams, and the fast prep work runs as a normal request beforehand.
+
+**Test via curl:**
+```bash
+# Get a videoId from Supabase first, then:
+curl -X POST http://localhost:3000/api/decode \
+  -H "Content-Type: application/json" \
+  -d '{"videoId": "PASTE_SUPABASE_UUID_HERE"}' \
+  --no-buffer
+```
+
+Expected: SSE events stream in, ending with a `result` event containing the full analysis.
+
+- [ ] `app/api/decode/route.ts` modified to accept `videoId` and run `analyseVideo`
+- [ ] Progress events stream correctly via SSE
+- [ ] Final `result` event contains full `DecoderResult`
+- [ ] `maxDuration = 60` set
+- [ ] TypeScript check passes
+
+---
+
+#### TASK 2D — Create `components/TranscriptPreview.tsx`
+
+**What it is:** A new client component that displays the video information and full transcript in a readable layout, with the action button(s) to run analysis.
+
+**Props:**
 ```typescript
-// Success
-{
-  data: BuilderResult;
-  meta: {
-    processingTimeMs: number;
-    cached: boolean;
+interface TranscriptPreviewProps {
+  videoData: VideoData;
+  transcript: string;
+  wordCount: number;
+  existingAnalysisId: string | null;
+  onAnalyseClick: () => void;         // Fires when user clicks Analyse
+  onViewExistingClick?: () => void;   // Fires when user clicks View Previous Analysis
+  isCollapsed?: boolean;               // When analysis is running/shown, transcript collapses
+}
+```
+
+**Layout (top to bottom):**
+
+1. **Video card** — horizontal layout:
+   - Thumbnail on the left (use `<img>`, not `next/image`)
+   - Right side: title (large, bold), channel name, view count formatted (e.g., "11.7M views"), publish date
+   - Subtle border, rounded corners
+
+2. **Transcript section:**
+   - Header: "Transcript" + small subtitle showing word count (e.g., "2,347 words")
+   - Toggle button to collapse/expand the transcript box (arrow icon)
+   - Scrollable box showing the full transcript
+   - Max height ~400px with vertical scroll
+   - Light background, readable line-height (1.7), comfortable padding
+   - If `isCollapsed === true`, show only the header and a "Show transcript" button
+
+3. **Action area** — below the transcript:
+   - If `existingAnalysisId` is present:
+     - Primary button: **"View Previous Analysis"** — prominent, filled style
+     - Secondary link/button: **"Re-analyse with K1 Framework"** — underlined text style
+     - Small note: "This video has been analysed before"
+   - If `existingAnalysisId` is null:
+     - Primary button: **"Analyse with K1 Framework"** — prominent, filled style
+     - Small note below: "Analysis takes 15–30 seconds using Kahneman, Berger, Loewenstein and Salt frameworks"
+
+**Styling notes:**
+- Use shadcn/ui components where possible: `Card`, `Button`, `Separator`, `Badge`
+- The transcript box should feel readable, not cramped — this is content the user will actually want to read
+- The Analyse button should feel important — slightly larger than normal buttons, with clear visual weight
+- Keep the component under 150 lines — if it grows, split the video card into its own `VideoInfoCard.tsx`
+
+**Plain English explanation:** This is the new heart of the decode experience. Before anything runs, the user sees exactly what TEDAR is looking at — the video they picked and every word it contains. Then they decide whether to analyse. If it's already been analysed, they can see the previous analysis instantly instead of waiting for a re-run.
+
+**Test:** Cannot fully test until Task 2E wires it up. For now, `npx tsc --noEmit` must pass with no errors on this file.
+
+- [ ] `components/TranscriptPreview.tsx` created
+- [ ] All props typed correctly
+- [ ] Video card, transcript box, and action area all render
+- [ ] Collapse/expand toggle works
+- [ ] Both button states (with/without existing analysis) render correctly
+- [ ] Under 150 lines
+- [ ] TypeScript check passes
+
+---
+
+#### TASK 2E — Restructure `DecodeLoader.tsx` for the two-stage flow
+
+**What it is:** The existing `app/decode/[videoId]/DecodeLoader.tsx` handles the live decode flow. Restructure it into a state machine that handles four stages: preparing, previewing, analysing, complete.
+
+**New state machine:**
+```typescript
+type DecodeStage = 
+  | 'preparing'        // Initial load — calling /api/decode/prepare
+  | 'previewing'       // Preview shown, waiting for user action
+  | 'analysing'        // /api/decode streaming, chain-of-thought progress visible
+  | 'complete'         // Analysis done, AnalysisCard visible
+  | 'error';           // Something failed at some stage
+```
+
+**Props:**
+```typescript
+interface DecodeLoaderProps {
+  youtubeVideoId: string;           // The YouTube video ID from the URL
+  videoUrl: string;                 // Full URL for prepare call
+  onAnalysisComplete?: (analysisId: string) => void;  // Fires when analysis done
+}
+```
+
+**State:**
+```typescript
+const [stage, setStage] = useState<DecodeStage>('preparing');
+const [prepared, setPrepared] = useState<PrepareResult | null>(null);
+const [progressMessages, setProgressMessages] = useState<string[]>([]);
+const [analysisResult, setAnalysisResult] = useState<DecoderResult | null>(null);
+const [error, setError] = useState<string | null>(null);
+```
+
+**Flow:**
+
+```typescript
+// On mount: call prepare endpoint
+useEffect(() => {
+  async function prepare() {
+    try {
+      const response = await fetch('/api/decode/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl }),
+      });
+      const { data, error } = await response.json();
+      if (error) throw new Error(error);
+      setPrepared(data);
+      setStage('previewing');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error');
+      setStage('error');
+    }
+  }
+  prepare();
+}, [videoUrl]);
+
+// When user clicks Analyse (or View Previous)
+async function handleAnalyse(forceRefresh = false) {
+  if (!prepared) return;
+  setStage('analysing');
+  setProgressMessages([]);
+
+  const response = await fetch('/api/decode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId: prepared.videoId, forceRefresh }),
+  });
+
+  // Read SSE stream
+  const reader = response.body?.getReader();
+  if (!reader) { setStage('error'); return; }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    
+    const lines = buffer.split('\n\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const event = JSON.parse(line.slice(6));
+      
+      if (event.type === 'progress') {
+        setProgressMessages(prev => [...prev, event.message]);
+      } else if (event.type === 'result') {
+        setAnalysisResult(event.data);
+        setStage('complete');
+        // Notify parent component so BriefBuilder can render
+        if (event.data.id) onAnalysisComplete?.(event.data.id);
+      } else if (event.type === 'error') {
+        setError(event.message);
+        setStage('error');
+      }
+    }
   }
 }
+```
 
-// Error
-{
-  error: string;
-  code: string;
+**Rendering logic:**
+
+- `stage === 'preparing'`: simple spinner + "Loading video and transcript..." text
+- `stage === 'previewing'`: render `<TranscriptPreview>` with `onAnalyseClick={() => handleAnalyse(false)}`, `onViewExistingClick={() => handleAnalyse(false)}` (loads cache instantly)
+- `stage === 'analysing'`: render `<TranscriptPreview isCollapsed={true}>` at top + chain-of-thought progress list below
+- `stage === 'complete'`: render `<TranscriptPreview isCollapsed={true}>` at top + `<AnalysisCard result={analysisResult}>` below
+- `stage === 'error'`: render error message + retry button that resets state and calls prepare again
+
+**Chain-of-thought progress display:**
+Each message in `progressMessages` renders as a line with a small checkmark and subtle fade-in animation. Light grey text. Monospace or slightly reduced font. Feels like a live log.
+
+**Plain English explanation:** This component is the full decode experience in one client-side state machine. It calls the prepare endpoint on mount to get the transcript ready, shows the preview, waits for the user to commit, then streams the analysis with live progress. Everything a user sees between clicking an outlier and viewing the full analysis lives inside this one component.
+
+**Also update `app/decode/[videoId]/page.tsx`:**
+
+The page needs to hold the analysis ID in state so `BriefBuilder` only renders once the analysis is complete. Create a small wrapper client component:
+
+```typescript
+// app/decode/[videoId]/page.tsx (server component)
+export default async function DecodePage({ params }) {
+  const { videoId } = await params;
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  return <DecodePageClient youtubeVideoId={videoId} videoUrl={videoUrl} />;
+}
+
+// app/decode/[videoId]/DecodePageClient.tsx (NEW client component)
+'use client';
+export function DecodePageClient({ youtubeVideoId, videoUrl }) {
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+  return (
+    <>
+      <DecodeLoader
+        youtubeVideoId={youtubeVideoId}
+        videoUrl={videoUrl}
+        onAnalysisComplete={(id) => setAnalysisId(id)}
+      />
+      {analysisId && <BriefBuilder analysisId={analysisId} />}
+    </>
+  );
 }
 ```
 
-**Error codes to handle:**
-- `MISSING_FIELDS` — analysisId, channelName, or niche not provided (400)
-- `ANALYSIS_NOT_FOUND` — no decode analysis found for this analysisId (404)
-- `BUILD_FAILED` — LLM call or JSON parse failed after retry (500)
-- `INTERNAL_ERROR` — any other error (500)
+**Test:**
+1. `npm run dev`
+2. Paste a video URL — new decode page opens
+3. Verify spinner → transcript preview appears (~5 seconds)
+4. Verify video info + transcript render correctly
+5. Click "Analyse with K1 Framework"
+6. Verify chain-of-thought progress messages stream in
+7. Verify full AnalysisCard appears below collapsed transcript preview
+8. Verify BriefBuilder appears below AnalysisCard
+9. Go back, re-open the same video
+10. Verify preview now shows "View Previous Analysis" button
+11. Click it → verify analysis loads instantly (cache hit)
 
-**Plain English explanation:** This file is the door between the browser and the Builder. The browser sends the analysis ID and creator's channel details through this door, and the production brief comes back out. All the complex logic is in `lib/builder.ts` — this route just validates the request and forwards it.
-
-**Test:** With `npm run dev` running:
-
-```bash
-# Get a real analysis ID from Supabase first, then:
-
-# Test 1: Build a brief (takes 5-15 seconds — Gemini call)
-curl -X POST http://localhost:3000/api/build \
-  -H "Content-Type: application/json" \
-  -d '{
-    "analysisId": "PASTE_REAL_ANALYSIS_ID_HERE",
-    "channelName": "FinanceWithShayan",
-    "niche": "personal finance"
-  }' \
-  --max-time 60
-
-# Test 2: Same request — should return cached in under 1 second
-curl -X POST http://localhost:3000/api/build \
-  -H "Content-Type: application/json" \
-  -d '{
-    "analysisId": "SAME_ANALYSIS_ID",
-    "channelName": "FinanceWithShayan",
-    "niche": "personal finance"
-  }' \
-  --max-time 10
-
-# Test 3: Missing fields — should return 400
-curl -X POST http://localhost:3000/api/build \
-  -H "Content-Type: application/json" \
-  -d '{"analysisId": "some-id"}' \
-  --max-time 10
-```
-
-Expected: Test 1 returns full BuilderResult with `cached: false` and a processing time of 5–15 seconds. Test 2 returns same result with `cached: true` in under 1 second. Test 3 returns 400 with `MISSING_FIELDS` code.
-
-- [x] `app/api/build/route.ts` created ✓
-- [x] Test 1: fresh brief returns correctly with Gemini output ✓
-- [x] Test 2: cached brief returns in under 1 second ✓
-- [x] Test 3: missing fields returns 400 ✓
+- [ ] `app/decode/[videoId]/DecodeLoader.tsx` restructured with state machine
+- [ ] `app/decode/[videoId]/DecodePageClient.tsx` created
+- [ ] `app/decode/[videoId]/page.tsx` updated
+- [ ] Preview → analyse → complete flow works locally
+- [ ] Existing analysis detection works — "View Previous Analysis" appears for cached videos
+- [ ] Chain-of-thought progress displays during analysis
+- [ ] BriefBuilder appears correctly after analysis completes
+- [ ] TypeScript check passes
 
 ---
 
-### TASK 6 — `components/BuilderCard.tsx`
+#### TASK 2F — Verify all decode entry points use the new flow
 
-**What it is:** The UI component that displays the full Builder output. Two sections: Production Brief and Script Outline. Every instruction shows with its domain badge and reason.
+**What it is:** The preview flow must apply consistently everywhere. Audit the codebase for every place that navigates to a decode page or calls `/api/decode` directly.
+
+**Entry points to check:**
+
+1. **Video mode input on homepage** — pasting a video URL should route to `/decode/[videoId]`. Verify this already works via navigation.
+
+2. **OutlierCard click in channel mode** — clicking an outlier should navigate to `/decode/[videoId]`. Verify the OutlierCard's onClick uses `router.push` or a `<Link>` pointing to the decode route. Should NOT directly call `/api/decode`.
+
+3. **OutlierCard click in niche mode** — same as channel mode. Clicking any outlier navigates to `/decode/[videoId]`.
+
+4. **Grep for stale call sites:**
+```bash
+grep -rn "fetch('/api/decode'" app/ components/ lib/
+grep -rn "decodeVideo(" app/ components/ lib/
+```
+
+Update any stale call sites. If any component currently calls `/api/decode` directly with a `videoUrl`, update it to navigate to the decode page instead.
+
+**Test:**
+1. Test each entry point manually in the browser:
+   - Paste video URL → lands on preview
+   - Channel mode → click outlier → lands on preview
+   - Niche mode → scan channels → click outlier → lands on preview
+2. Confirm all three paths show the transcript preview before analysis
+
+- [ ] Grep completed for `/api/decode` and `decodeVideo` call sites
+- [ ] All OutlierCard components navigate via link/router
+- [ ] Video mode entry confirmed working
+- [ ] Channel mode outlier click confirmed working
+- [ ] Niche mode outlier click confirmed working
+- [ ] No stale call sites remain
+
+---
+
+### TASK 3 — Split niche mode into progressive steps
+
+**What it is:** Niche mode on the homepage currently calls a single endpoint that does everything. Split into two sequential frontend steps.
+
+**Do NOT change the backend API endpoints.** `/api/scout/discover` and `/api/scout/scan` already exist. This is a frontend-only change.
+
+**New flow:**
+```
+Step 1: User types niche → call /api/scout/discover
+   → show 5 channels with names, subscriber counts, relevance scores
+   → ~10–15 seconds
+
+Step 2: After channels appear, "Scan All Channels" button shows
+   → on click, loop through channels sequentially
+   → call /api/scout/scan for each
+   → append outliers to grid as each returns
+```
+
+**Update `app/page.tsx`:**
+
+Add these states:
+```typescript
+const [nicheStage, setNicheStage] = useState<'idle' | 'discovering' | 'channelsReady' | 'scanning' | 'complete'>('idle');
+const [discoveredChannels, setDiscoveredChannels] = useState<ChannelData[]>([]);
+const [scanProgress, setScanProgress] = useState<string>('');
+const [outliers, setOutliers] = useState<OutlierResult[]>([]);
+```
+
+**Flow functions:**
+
+```typescript
+async function handleNicheSubmit(keyword: string) {
+  setNicheStage('discovering');
+  setDiscoveredChannels([]);
+  setOutliers([]);
+
+  const response = await fetch('/api/scout/discover', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword }),
+  });
+  const { data } = await response.json();
+
+  setDiscoveredChannels(data.channels);
+  setNicheStage('channelsReady');
+}
+
+async function handleScanAllChannels() {
+  setNicheStage('scanning');
+  setOutliers([]);
+
+  for (let i = 0; i < discoveredChannels.length; i++) {
+    const channel = discoveredChannels[i];
+    setScanProgress(`Scanning ${i + 1} of ${discoveredChannels.length}: ${channel.channelName}...`);
+
+    try {
+      const response = await fetch('/api/scout/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId: channel.youtubeChannelId }),
+      });
+      const { data } = await response.json();
+      setOutliers(prev => [...prev, ...data]);
+    } catch (error) {
+      console.error(`Failed to scan ${channel.channelName}:`, error);
+    }
+  }
+
+  setNicheStage('complete');
+  setScanProgress('');
+}
+```
+
+**UI rendering:**
+- `'idle'` — show input panel normally
+- `'discovering'` — show "Discovering top channels for [niche]..." with spinner
+- `'channelsReady'` — show 5 channel cards (name, subs, relevance) + prominent "Scan All Channels" button
+- `'scanning'` — show channel cards with current channel highlighted + `OutlierGrid` below that fills progressively
+- `'complete'` — show full `OutlierGrid` sorted by outlier score
+
+**Critical React state note:** When appending to outliers inside the async loop, use the functional form: `setOutliers(prev => [...prev, ...data])`. Do NOT use `setOutliers([...outliers, ...data])` — the latter captures stale state in the async closure and only the last channel's outliers will show.
+
+**Do not touch channel mode or video mode.** They already work.
+
+**Plain English explanation:** The old niche mode did everything in one long request that took 90 seconds — too long for the browser to wait. The new flow shows results in two stages. First the user sees which channels TEDAR picked (fast). Then they click a button to scan each channel one by one, watching outliers pop up as each scan completes. The user is never waiting more than ~20 seconds for anything visible.
+
+**Test locally:**
+1. `npm run dev`
+2. Type "personal finance" in niche input
+3. Within 15 seconds, 5 channels appear
+4. Click "Scan All Channels"
+5. Progress updates as each channel scans
+6. Outliers appear progressively
+7. Click any outlier → lands on new transcript preview page (from Task 2)
+
+**Test on Vercel:**
+After commit + push + redeploy, test same flow on tedar.vercel.app. Confirm no "load failed".
+
+- [ ] `app/page.tsx` updated with niche stage state machine
+- [ ] `handleNicheSubmit` calls `/api/scout/discover` only
+- [ ] `handleScanAllChannels` loops channels sequentially with functional state updates
+- [ ] UI renders correctly for all 5 states
+- [ ] Outliers append progressively
+- [ ] Channel mode and video mode still work unchanged
+- [ ] Outlier click navigates to new preview flow
+- [ ] Local test passes
+- [ ] Vercel test passes
+- [ ] TypeScript check passes
+
+---
+
+### TASK 4 — Final commit and live verification
+
+**What it is:** Final commit of all Phase 5 changes, Vercel redeploy, and full live test suite.
 
 **Build instructions:**
-- `'use client'` directive at top
-- Props: `result: BuilderResult`
-- Use shadcn/ui `Card`, `CardContent`, `CardHeader`, `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`, `Badge`
-- Two tabs: "Brief" and "Script"
-- Copy-to-clipboard button on each section using the browser's `navigator.clipboard.writeText` API
-- Keep under 150 lines — if it exceeds this, split into `BriefSection.tsx` and `ScriptSection.tsx`
-
-**Tab 1 — "Brief"**
-
-Four sections:
-
-**Hook Strategy:**
-- The instruction text prominently in a styled box
-- Domain badge (`cognitive_psychology` → "Cognitive Psychology" etc.)
-- Confidence badge (high = green, medium = amber, low = grey)
-- Reason in smaller italic text below
-
-**Content Structure:**
-- Same layout as Hook Strategy
-
-**Priority Triggers:**
-- Numbered list (1, 2, 3)
-- Each trigger: instruction text + domain badge + reason
-
-**What to Avoid:**
-- Plain text — `result.productionBrief.avoidanceNotes`
-- Styled differently (amber background) to distinguish from positive instructions
-
-**Tab 2 — "Script"**
-
-Four sections:
-
-**Hook (0–30s):**
-- Large styled box — this is the most important section
-- Instruction text
-- Suggested phrasing highlighted (if the instruction contains suggested words in quotes, style them differently)
-- Domain + confidence badges
-- Reason below
-
-**Evidence Beats:**
-- Numbered list: Beat 1, Beat 2, Beat 3, Beat 4 (however many exist)
-- Each beat: instruction + domain badge + reason
-
-**Payoff:**
-- Same layout as Hook section
-
-**Close:**
-- Same layout as Hook section
-
-**Domain badge colour mapping:**
-```typescript
-const domainColours = {
-  cognitive_psychology: 'bg-blue-100 text-blue-800',
-  emotion_science: 'bg-purple-100 text-purple-800',
-  social_behavioural: 'bg-green-100 text-green-800',
-};
-```
-
-**Plain English explanation:** This component is the reading experience for the Builder's output. It turns the JSON brief into a structured, readable brief the founder can actually use in production. The domain badges and reasons make every instruction traceable back to the science.
-
-**Test:** Run `npx tsc --noEmit`. Zero errors. Visual test in Task 7.
-
-- [x] `components/BuilderCard.tsx` created ✓
-- [x] Both tabs render correctly ✓
-- [x] Domain badges display with correct colours ✓
-- [x] Confidence badges display correctly ✓
-- [x] Copy-to-clipboard works on each section ✓
-- [x] TypeScript check passes ✓
-
----
-
-### TASK 7 — Update `app/decode/[videoId]/page.tsx`
-
-**What it is:** Add the "Build Production Brief" flow to the existing decode page. The founder enters their channel name and niche, clicks Build, and the brief appears below the analysis.
-
-**What to change:**
-
-The decode page is currently a server component that renders the AnalysisCard. This task adds a client component `BriefBuilder` that handles the brief generation interaction.
-
-**New file: `app/decode/[videoId]/BriefBuilder.tsx`** (client component)
-
-This is a client component because it manages interactive state (form input, loading, result display).
-
-```typescript
-'use client';
-// Props: analysisId: string (the Supabase ID of the decode analysis)
-// State:
-//   channelName: string (input)
-//   niche: string (input)
-//   briefState: 'idle' | 'building' | 'complete' | 'error'
-//   briefResult: BuilderResult | null
-//   errorMessage: string
-
-// Layout:
-// 1. A simple form: two inputs (Channel Name, Niche) + "Build Brief" button
-//    Show only when briefState === 'idle'
-// 2. Loading state: spinner + "Building your production brief... 10-20 seconds"
-//    Show when briefState === 'building'
-// 3. BuilderCard component with the result
-//    Show when briefState === 'complete'
-// 4. Error state with retry button
-//    Show when briefState === 'error'
-```
-
-**Changes to `app/decode/[videoId]/page.tsx`:**
-
-Add the `BriefBuilder` component below the `AnalysisCard`. Pass the decode analysis ID as a prop.
-
-To get the analysis ID: after loading the analysis from the database with `getAnalysisByVideoId`, use `analysis.id` (the Supabase record ID, not the video ID).
-
-**Important:** The page must handle the case where no decode analysis exists yet. If `DecodeLoader` is shown (live decode in progress), do not show `BriefBuilder` — the analysis ID is not available until the decode completes. `BriefBuilder` only appears after the analysis is complete and its ID is known.
-
-**Plain English explanation:** This adds a second step to the decode page. After the founder sees the psychological analysis, they enter their channel name and niche, click Build, and TEDAR generates a personalised production brief for their specific channel. The analysis and the brief live on the same page — the creator sees why the video worked and what to do about it in one place.
-
-**Test:** Run `npm run dev`. Navigate to a decode page for a video that already has an analysis. Confirm:
-1. The form appears below the AnalysisCard
-2. Enter "TestChannel" and "personal finance" → click Build
-3. Loading spinner appears for 10-20 seconds
-4. BuilderCard appears with Brief and Script tabs
-5. Check Supabase — new row in `analyses` table with `analysis_type = 'build'`
-6. Refresh the page → click Build again with same inputs → brief returns in under 1 second (cached)
-
-- [x] `app/decode/[videoId]/BriefBuilder.tsx` created ✓
-- [x] `app/decode/[videoId]/page.tsx` updated ✓
-- [x] Form appears below AnalysisCard on decode page ✓
-- [x] Build flow completes and displays BuilderCard ✓
-- [x] Cached brief returns in under 1 second on second request ✓
-- [x] New row verified in Supabase `analyses` table ✓
-- [x] TypeScript check passes ✓
-
----
-
-### TASK 8 — Commit and push to GitHub
 
 ```bash
+git status
+cat .gitignore | grep .env.local
+npm run build
+
 git add .
-git commit -m "Phase 4: Builder Engine — production direction brief, Gemini integration, build page"
+git commit -m "Phase 5: Fix transcript for Vercel, add transcript preview flow, split niche mode progressively"
 git push
+
+git show --stat HEAD  # verify .env.local NOT in commit
 ```
 
-Verify on github.com/Shayan733/tedar that all new files appear. Confirm `.env.local` is NOT in the commit:
+Wait ~2 minutes for Vercel auto-deploy.
 
-```bash
-git show --stat HEAD
-```
+**Live verification suite on tedar.vercel.app — run all six tests in order:**
 
-The output must not include `.env.local` anywhere.
+**Test 1 — Video mode preview flow:**
+1. Go to https://tedar.vercel.app
+2. Video mode → paste `https://www.youtube.com/watch?v=ewkQ1FLbYSg`
+3. Verify transcript preview loads within ~10 seconds
+4. Verify video info + full transcript visible
+5. Click "Analyse with K1 Framework"
+6. Verify chain-of-thought progress streams
+7. Verify AnalysisCard and BriefBuilder appear
 
-- [x] Changes committed ✓
-- [x] Pushed to GitHub ✓
-- [x] `.env.local` NOT in commit ✓
+**Test 2 — Cached analysis detection:**
+1. Refresh the page from Test 1
+2. Verify preview shows "View Previous Analysis" button
+3. Click it → verify analysis loads in under 2 seconds
+
+**Test 3 — Channel mode → outlier → preview:**
+1. Channel mode → paste `https://www.youtube.com/@TED`
+2. Wait for outliers to appear
+3. Click any outlier
+4. Verify preview page loads with that video's transcript
+5. Verify analyse flow works
+
+**Test 4 — Niche mode progressive flow:**
+1. Niche mode → type "personal finance"
+2. Verify 5 channels appear within ~15 seconds
+3. Click "Scan All Channels"
+4. Verify progress updates per channel
+5. Verify outliers appear progressively
+6. Click any outlier → verify preview flow works
+
+**Test 5 — Error handling:**
+1. Paste a video URL known to have no captions (or invalid URL)
+2. Verify clear error message appears
+3. Verify no crash, option to retry
+
+**Test 6 — Brief builder still works:**
+1. From any completed analysis, fill channel name + niche in BriefBuilder
+2. Click Build → verify brief generates correctly
+3. Verify both Brief and Script tabs render
+
+**If any test fails:**
+- Check Vercel logs at vercel.com/shayan733s-projects/tedar/logs
+- Read exact error
+- Report to founder with error and proposed fix
+- Do not mark Phase 5 complete until all six tests pass
+
+- [ ] `npm run build` passes with zero errors
+- [ ] All changes committed and pushed
+- [ ] `.env.local` NOT in commit
+- [ ] Vercel auto-deploy completed
+- [ ] Test 1: Video mode preview flow works
+- [ ] Test 2: Cached analysis detection works
+- [ ] Test 3: Channel → outlier → preview works
+- [ ] Test 4: Niche mode progressive flow works
+- [ ] Test 5: Error handling works
+- [ ] Test 6: Brief builder works
 
 ---
 
-## PHASE 4 GATE CHECK
+## PHASE 5 GATE CHECK
 
-All of the following must be true before Phase 5 begins:
+All of the following must be true before Phase 5 is marked complete:
 
-- [x] `npx tsc --noEmit` passes with zero TypeScript errors
-- [x] All new types defined in `lib/types.ts`: BuilderResult, BuilderInstruction, CreatorContext, ProductionBrief, BriefRecord
-- [x] `lib/supabase.ts`: upsertBrief and getBriefByAnalysisId working
-- [x] `BUILDER_LLM_PROVIDER=gemini` in `.env.local`
-- [x] `lib/prompts/k1-builder.ts`: BUILDER_PROMPT_VERSION set, options parameter accepted, all 7 sections present
-- [x] `lib/builder.ts`: cache check, Gemini call, retry on JSON parse failure, database save all working
-- [x] `/api/build` route: returns cached results instantly, runs fresh Gemini call when needed, 400 on missing fields
-- [x] `components/BuilderCard.tsx`: both tabs render, domain badges correct, copy-to-clipboard works
-- [x] `app/decode/[videoId]/BriefBuilder.tsx`: form, loading state, result display, error state all working
-- [x] Full browser flow tested: decode page → enter channel + niche → Build → brief appears
-- [x] Supabase `analyses` table: rows with `analysis_type = 'build'` verified
-- [x] Brief quality check: hookStrategy contains specific phrasing — not generic advice
-- [x] All code committed and pushed to GitHub
+- [ ] `npx tsc --noEmit` passes with zero TypeScript errors
+- [ ] Transcript fetching works on Vercel (not just locally)
+- [ ] Transcript preview flow works on all three entry points (video, channel outlier, niche outlier)
+- [ ] Chain-of-thought progress displays during analysis
+- [ ] Existing analyses detected — "View Previous Analysis" button appears for cached videos
+- [ ] Niche mode progressive flow completes without timeouts
+- [ ] Channel mode and video mode still work end-to-end
+- [ ] BriefBuilder still generates production briefs correctly
+- [ ] All code committed and pushed to GitHub
+- [ ] Vercel deployment is live and stable
+- [ ] All six live verification tests pass on tedar.vercel.app
+- [ ] No console errors in browser when using the live site
 
-**When all boxes above are ticked:** Tell the founder "Phase 4 is complete. The Builder Engine is working. TEDAR now produces both psychological analysis and personalised production briefs. Replace this CLAUDE.md with the Phase 5 CLAUDE.md to begin building the full automated pipeline."
+**When all boxes are ticked:** Tell the founder "Phase 5 is complete. TEDAR now has a transcript preview flow, chain-of-thought progress narration, and progressive niche scanning. The live URL at tedar.vercel.app is ready to share with test creators."
 
 ---
 
@@ -1024,24 +1086,38 @@ All of the following must be true before Phase 5 begins:
 4. Re-run the specific test for that task.
 5. Confirm it passes before moving on.
 
-**Common Phase 4 issues:**
+**Common Phase 5 issues:**
 
-- **Gemini returns invalid JSON:** The Builder prompt must say "Return ONLY valid JSON. No markdown. No backticks. No explanation before or after." Use `stripJsonFences` before `JSON.parse`. Retry once if it fails.
+- **Fix A headers don't work on Vercel:** Expected — move to Fix B (direct timedtext API).
 
-- **`BUILDER_LLM_PROVIDER` not being picked up:** Check that the env var is in `.env.local` and that `npm run dev` was restarted after adding it. Next.js caches env vars at startup — a restart is required after any `.env.local` change.
+- **Fix B returns empty captionTracks:** YouTube occasionally changes page structure. Log the raw HTML response to Vercel logs and inspect. Adjust the regex accordingly.
 
-- **Brief is generic despite the prompt:** Gemini 2.5 Flash is significantly better than llama 70B for this task. If the output is still generic, the issue is likely the `creatorContext` not being injected into the prompt correctly. Check that `channelName` and `niche` appear in the actual instruction text of the hookStrategy.
+- **Transcript garbled with double-decoded entities:** Only decode each entity once, in the correct order.
 
-- **Cache not working for briefs:** Check `getBriefByAnalysisId` — the JSONB query on `result->sourceAnalysisId` must match how the sourceAnalysisId was stored. Log the raw Supabase response to verify.
+- **Prepare endpoint returns but frontend shows spinner forever:** Client component never called `setStage('previewing')` after setting prepared state.
 
-- **BriefBuilder form not appearing on decode page:** Check that the decode analysis ID is being passed correctly from the server component to the client component. The ID comes from the `analysis.id` field of the Supabase record — not from the video ID or the YouTube ID.
+- **Chain-of-thought messages arrive all at once:** The LLM call is synchronous. Messages before the call stream fine, but anything after waits for the LLM. This is expected. The perceived wait is short because the first 8 messages stream in the first ~200ms.
 
-- **Gemini 20 req/day limit hit:** If you exhaust the daily Gemini quota during testing, switch `BUILDER_LLM_PROVIDER=groq` temporarily to continue testing the flow. The brief quality will be lower but the architecture will still work. Reset to `gemini` the next day.
+- **"View Previous Analysis" shows but loads for 30s:** The cache hit logic in `analyseVideo` is not returning early. Check that when `forceRefresh !== true` and an existing analysis is found, the function returns immediately without calling the LLM.
 
-- **TypeScript error on domain type:** The `domain` field must be one of the exact string literals defined in the union type. If Gemini returns `"Cognitive Psychology"` instead of `"cognitive_psychology"` — add a normalisation step in `lib/builder.ts` that lowercases and underscores the domain value before validation.
+- **TranscriptPreview shows but buttons don't work:** Client component boundary issue. Verify `'use client'` at the top of the file and that parent components pass callback props correctly.
+
+- **Niche mode outliers only show the last channel's results:** Stale state in async loop. Use `setOutliers(prev => [...prev, ...data])` not `setOutliers([...outliers, ...data])`.
+
+- **Vercel SSE stream closes early:** Add `export const maxDuration = 60;` at the top of `app/api/decode/route.ts`.
+
+- **OutlierCard clicks lead to broken decode page:** Check that Link/href uses the YouTube video ID, not the Supabase UUID. The decode page URL format is `/decode/[youtubeVideoId]`.
+
+- **`decodeVideo` function still called somewhere:** Grep: `grep -rn "decodeVideo" --include="*.ts" --include="*.tsx"`. Update or remove every call site.
+
+- **Vercel logs show no errors but decode page is blank:** Client-side JavaScript error. Open browser DevTools → Console on the live site. Client errors do not appear in Vercel logs.
+
+- **npm run build fails with "Type error in DecodeLoader":** Prop type mismatch between `page.tsx`, `DecodePageClient.tsx`, and `DecodeLoader.tsx`. Check all three agree on the props passed.
+
+- **BriefBuilder does not appear after analysis:** The `onAnalysisComplete` callback is not being called with a valid analysis ID. Check that the `result` event data contains the saved analysis ID from Supabase — `analyseVideo` must include the DB record ID in the returned result.
 
 ---
 
-*TEDAR Project Bible v5.0 — Phase 4 of 7*
-*Built one step at a time. Test before moving. Never skip gates.*
-*The Builder translates science into production decisions. Every instruction must earn its place.*
+*TEDAR Project Bible v5.0 — Phase 5 of the live deployment track*
+*Fix what is broken. Give the user a checkpoint moment. Verify on the live URL before declaring victory.*
+*The transcript preview is not a feature. It is a psychological contract between the user and the product.*
