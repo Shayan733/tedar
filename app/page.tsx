@@ -5,10 +5,11 @@ import { OutlierCard } from '@/components/OutlierCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { NichePipelineResult, ChannelPipelineResult, VideoPipelineResult } from '@/lib/types';
+import { NichePipelineResult, ChannelPipelineResult, VideoPipelineResult, RankedChannel, OutlierResult } from '@/lib/types';
 import { readStream } from '@/lib/streaming';
 
 type PageState = 'idle' | 'interpreting' | 'clarifying' | 'confirmed' | 'running' | 'complete' | 'error';
+type NicheStage = 'idle' | 'discovering' | 'channelsReady' | 'scanning' | 'complete';
 
 interface ScoutResultData {
   results: NichePipelineResult | ChannelPipelineResult | VideoPipelineResult;
@@ -27,6 +28,13 @@ export default function Home() {
   const [results, setResults] = useState<NichePipelineResult | ChannelPipelineResult | VideoPipelineResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [progressMessage, setProgressMessage] = useState('');
+
+  // Niche progressive mode state
+  const [nicheStage, setNicheStage] = useState<NicheStage>('idle');
+  const [discoveredChannels, setDiscoveredChannels] = useState<RankedChannel[]>([]);
+  const [scanProgress, setScanProgress] = useState('');
+  const [nicheOutliers, setNicheOutliers] = useState<OutlierResult[]>([]);
+  const [currentScanChannel, setCurrentScanChannel] = useState('');
 
   async function handleSubmit() {
     if (!userInput.trim()) return;
@@ -58,9 +66,66 @@ export default function Home() {
     setUserInput('');
   }
 
+  async function handleNicheDiscover(keyword: string) {
+    setNicheStage('discovering');
+    setDiscoveredChannels([]);
+    setNicheOutliers([]);
+    try {
+      const res = await fetch('/api/scout/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword }),
+      });
+      const json = await res.json() as { data?: { channels: RankedChannel[] }; error?: string };
+      if (json.error || !json.data) throw new Error(json.error ?? 'Discovery failed');
+      setDiscoveredChannels(json.data.channels);
+      setNicheStage('channelsReady');
+      setPageState('complete');
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : 'Discovery failed');
+      setPageState('error');
+    }
+  }
+
+  async function handleScanAllChannels() {
+    setNicheStage('scanning');
+    setNicheOutliers([]);
+    for (let i = 0; i < discoveredChannels.length; i++) {
+      const channel = discoveredChannels[i];
+      setCurrentScanChannel(channel.channelName);
+      setScanProgress(`Scanning ${i + 1} of ${discoveredChannels.length}: ${channel.channelName}…`);
+      try {
+        const res = await fetch('/api/scout/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            youtubeChannelId: channel.youtubeChannelId,
+            channelName: channel.channelName,
+            channelUrl: channel.channelUrl,
+            relevanceScore: channel.relevanceScore,
+          }),
+        });
+        const json = await res.json() as { data?: OutlierResult[]; error?: string };
+        if (json.data) {
+          setNicheOutliers(prev => [...prev, ...json.data!]);
+        }
+      } catch {
+        console.error(`Failed to scan ${channel.channelName}`);
+      }
+    }
+    setNicheStage('complete');
+    setScanProgress('');
+    setCurrentScanChannel('');
+  }
+
   async function handleRun() {
     setPageState('running');
     setProgressMessage('');
+
+    if (inputType === 'niche') {
+      await handleNicheDiscover(inputValue);
+      return;
+    }
 
     try {
       const res = await fetch('/api/scout/run', {
@@ -100,6 +165,11 @@ export default function Home() {
     setResults(null);
     setErrorMessage('');
     setProgressMessage('');
+    setNicheStage('idle');
+    setDiscoveredChannels([]);
+    setScanProgress('');
+    setNicheOutliers([]);
+    setCurrentScanChannel('');
   }
 
   const isBusy = pageState === 'interpreting' || pageState === 'running';
@@ -110,6 +180,8 @@ export default function Home() {
     ? (results as NichePipelineResult | ChannelPipelineResult).outliers
     : [];
   const videoResult = results?.inputType === 'video' ? results as VideoPipelineResult : null;
+
+  const sortedNicheOutliers = [...nicheOutliers].sort((a, b) => b.outlierScore - a.outlierScore);
 
   return (
     <div className="min-h-screen bg-white">
@@ -154,8 +226,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* STATE: running — live progress from stream */}
-        {isRunning && (
+        {isRunning && inputType !== 'niche' && (
           <div className="space-y-3 py-4">
             <div className="h-1 w-full rounded bg-gray-200 overflow-hidden">
               <div className="h-full bg-violet-500 animate-pulse" />
@@ -163,6 +234,15 @@ export default function Home() {
             <p className="text-sm text-gray-600 text-center">
               {progressMessage || 'Starting Scout...'}
             </p>
+          </div>
+        )}
+
+        {isRunning && inputType === 'niche' && (
+          <div className="space-y-3 py-4">
+            <div className="h-1 w-full rounded bg-gray-200 overflow-hidden">
+              <div className="h-full bg-violet-500 animate-pulse" />
+            </div>
+            <p className="text-sm text-gray-600 text-center">Discovering top channels…</p>
           </div>
         )}
 
@@ -175,7 +255,57 @@ export default function Home() {
           </Alert>
         )}
 
-        {pageState === 'complete' && (
+        {/* Niche progressive flow */}
+        {pageState === 'complete' && inputType === 'niche' && (
+          <div className="space-y-6">
+            {/* Channel list */}
+            {(nicheStage === 'channelsReady' || nicheStage === 'scanning' || nicheStage === 'complete') && (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-gray-700">
+                  Top channels for <span className="text-violet-600">{inputValue}</span>
+                </p>
+                {discoveredChannels.map(ch => (
+                  <div
+                    key={ch.youtubeChannelId}
+                    className={`flex items-center justify-between rounded-lg border p-3 text-sm ${
+                      currentScanChannel === ch.channelName
+                        ? 'border-violet-400 bg-violet-50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <span className="font-medium">{ch.channelName}</span>
+                    <span className="text-gray-400 text-xs">
+                      {ch.subscriberCount ? `${(ch.subscriberCount / 1000).toFixed(0)}K subs · ` : ''}
+                      relevance {ch.relevanceScore}
+                    </span>
+                  </div>
+                ))}
+                {nicheStage === 'channelsReady' && (
+                  <Button onClick={() => void handleScanAllChannels()}>
+                    Scan All Channels
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Scan progress */}
+            {nicheStage === 'scanning' && scanProgress && (
+              <p className="text-sm text-gray-500 italic">{scanProgress}</p>
+            )}
+
+            {/* Progressive outlier grid */}
+            {sortedNicheOutliers.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {sortedNicheOutliers.map(o => (
+                  <OutlierCard key={o.video.youtubeVideoId} result={o} rank={o.rank} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Channel / video mode results */}
+        {pageState === 'complete' && inputType !== 'niche' && (
           <div className="space-y-6">
             {narratorMessage && (
               <p className="text-base italic text-gray-700 leading-relaxed border-l-4 border-gray-200 pl-4">
