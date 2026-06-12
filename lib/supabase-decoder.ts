@@ -34,7 +34,10 @@ export async function upsertTranscript(transcript: TranscriptData): Promise<stri
 
 // ── Analyses ──────────────────────────────────────────────────────────────────
 
-export async function upsertAnalysis(analysis: AnalysisRecord): Promise<string> {
+// Every run is permanent: re-analysing a video creates a NEW row instead of
+// overwriting the previous one, so the full run history is preserved.
+// Reads always take the latest row per (video, type) — see getAnalysisByVideoId.
+export async function insertAnalysis(analysis: AnalysisRecord): Promise<string> {
   const payload = {
     video_id: analysis.videoId,
     analysis_type: analysis.analysisType,
@@ -49,33 +52,12 @@ export async function upsertAnalysis(analysis: AnalysisRecord): Promise<string> 
     tokens_output: analysis.tokensOutput,
   };
 
-  // Check if a record already exists for this video + analysis type
-  const { data: existing } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('analyses')
+    .insert(payload)
     .select('id')
-    .eq('video_id', analysis.videoId)
-    .eq('analysis_type', analysis.analysisType)
-    .maybeSingle();
-
-  let id: string;
-  if (existing) {
-    // Update the existing record
-    const { error } = await supabaseAdmin
-      .from('analyses')
-      .update(payload)
-      .eq('id', existing.id as string);
-    if (error) throw new Error(`Failed to update analysis for video ${analysis.videoId}: ${error.message}`);
-    id = existing.id as string;
-  } else {
-    // Insert a new record
-    const { data, error } = await supabaseAdmin
-      .from('analyses')
-      .insert(payload)
-      .select('id')
-      .single();
-    if (error) throw new Error(`Failed to insert analysis for video ${analysis.videoId}: ${error.message}`);
-    id = data.id as string;
-  }
+    .single();
+  if (error) throw new Error(`Failed to insert analysis for video ${analysis.videoId}: ${error.message}`);
 
   // Mark video as having an analysis
   await supabaseAdmin
@@ -83,7 +65,7 @@ export async function upsertAnalysis(analysis: AnalysisRecord): Promise<string> 
     .update({ has_analysis: true })
     .eq('id', analysis.videoId);
 
-  return id;
+  return data.id as string;
 }
 
 // ── Queries ───────────────────────────────────────────────────────────────────

@@ -14,15 +14,17 @@ interface PreparedData {
   transcript: string;
   wordCount: number;
   existingAnalysisId: string | null;
+  existingAudienceId: string | null;
 }
 
 interface DecodeLoaderProps {
   youtubeVideoId: string;
   videoUrl: string;
   onAnalysisComplete?: (analysisId: string) => void;
+  onPrepared?: (videoId: string, existingAudienceId: string | null) => void;
 }
 
-export function DecodeLoader({ videoUrl, onAnalysisComplete }: DecodeLoaderProps) {
+export function DecodeLoader({ videoUrl, onAnalysisComplete, onPrepared }: DecodeLoaderProps) {
   const [stage, setStage] = useState<DecodeStage>('preparing');
   const [prepared, setPrepared] = useState<PreparedData | null>(null);
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
@@ -43,11 +45,12 @@ export function DecodeLoader({ videoUrl, onAnalysisComplete }: DecodeLoaderProps
       if (json.error || !json.data) throw new Error(json.error ?? 'Prepare failed');
       setPrepared(json.data);
       setStage('previewing');
+      onPrepared?.(json.data.videoId, json.data.existingAudienceId ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load video.');
       setStage('error');
     }
-  }, [videoUrl]);
+  }, [videoUrl, onPrepared]); // parent must pass a stable onPrepared (useCallback)
 
   useEffect(() => { void runPrepare(); }, [runPrepare]);
 

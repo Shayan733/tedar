@@ -11,6 +11,7 @@ import {
   getVideoByYoutubeId,
   getTranscriptByVideoId,
 } from './supabase-decoder';
+import { getAudienceAnalysisByVideoId } from './supabase-audience';
 import { VideoData } from './types';
 
 export type DecodeProgressCallback = (message: string) => void;
@@ -22,6 +23,7 @@ export interface PrepareResult {
   transcript: string;
   wordCount: number;
   existingAnalysisId: string | null;
+  existingAudienceId: string | null;
 }
 
 function extractYoutubeVideoId(input: string): string {
@@ -65,7 +67,10 @@ export async function prepareVideo(videoUrl: string): Promise<PrepareResult> {
   }
 
   const wordCount = transcript.split(' ').length;
-  const existingAnalysis = await getAnalysisByVideoId(videoId, 'decode');
+  const [existingAnalysis, existingAudience] = await Promise.all([
+    getAnalysisByVideoId(videoId, 'decode'),
+    getAudienceAnalysisByVideoId(videoId),
+  ]);
 
   return {
     videoId,
@@ -74,5 +79,6 @@ export async function prepareVideo(videoUrl: string): Promise<PrepareResult> {
     transcript,
     wordCount,
     existingAnalysisId: existingAnalysis?.id ?? null,
+    existingAudienceId: existingAudience?.id ?? null,
   };
 }

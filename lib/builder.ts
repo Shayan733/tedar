@@ -3,7 +3,7 @@
 // Takes a decode analysis ID + creator context → returns a production brief.
 
 import { buildBuilderPrompt, BUILDER_PROMPT_VERSION } from './prompts/k1-builder';
-import { generateLLMResponse, stripJsonFences } from './llm/provider';
+import { generateLLMResponse, stripJsonFences, LLMProvider } from './llm/provider';
 import { getBriefByAnalysisId, upsertBrief } from './supabase-builder';
 import { supabaseAdmin } from './supabase';
 import { BuilderResult, CreatorContext, DecoderResult } from './types';
@@ -96,64 +96,60 @@ export async function buildBrief(
     options
   );
 
-  // Step 4: call Gemini (swap provider temporarily)
+  // Step 4: call the Builder LLM — explicit provider, no process.env mutation
+  // (mutating LLM_PROVIDER raced with concurrent Decoder requests)
+  const builderProvider = (process.env.BUILDER_LLM_PROVIDER ?? 'gemini') as LLMProvider;
   const startTime = Date.now();
-  const originalProvider = process.env.LLM_PROVIDER;
-  process.env.LLM_PROVIDER = process.env.BUILDER_LLM_PROVIDER ?? 'gemini';
 
+  const response = await generateLLMResponse(systemPrompt, userMessage, {
+    temperature: LLM_TEMPERATURE,
+    maxTokens: BUILDER_MAX_TOKENS,
+    provider: builderProvider,
+  });
+  const processingTimeMs = Date.now() - startTime;
+
+  // Step 5: parse and validate — retry once on failure
   let builderResult: BuilderResult;
   try {
-    const response = await generateLLMResponse(systemPrompt, userMessage, {
-      temperature: LLM_TEMPERATURE,
-      maxTokens: BUILDER_MAX_TOKENS,
-    });
-    const processingTimeMs = Date.now() - startTime;
-
-    // Step 5: parse and validate — retry once on failure
+    const cleaned = stripJsonFences(response.text);
+    const parsed: unknown = JSON.parse(cleaned);
+    if (!validateBuilderResult(parsed)) throw new Error('Invalid shape');
+    builderResult = normaliseResult(parsed);
+  } catch {
+    // Retry once
+    const retryResponse = await generateLLMResponse(
+      systemPrompt,
+      userMessage +
+        '\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no backticks, no text outside the JSON object.',
+      { temperature: LLM_TEMPERATURE, maxTokens: BUILDER_MAX_TOKENS, provider: builderProvider }
+    );
     try {
-      const cleaned = stripJsonFences(response.text);
+      const cleaned = stripJsonFences(retryResponse.text);
       const parsed: unknown = JSON.parse(cleaned);
-      if (!validateBuilderResult(parsed)) throw new Error('Invalid shape');
+      if (!validateBuilderResult(parsed))
+        throw new Error('Invalid shape on retry');
       builderResult = normaliseResult(parsed);
     } catch {
-      // Retry once
-      const retryResponse = await generateLLMResponse(
-        systemPrompt,
-        userMessage +
-          '\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no backticks, no text outside the JSON object.',
-        { temperature: LLM_TEMPERATURE, maxTokens: BUILDER_MAX_TOKENS }
+      throw new Error(
+        'Brief could not be generated. Please try again.'
       );
-      try {
-        const cleaned = stripJsonFences(retryResponse.text);
-        const parsed: unknown = JSON.parse(cleaned);
-        if (!validateBuilderResult(parsed))
-          throw new Error('Invalid shape on retry');
-        builderResult = normaliseResult(parsed);
-      } catch {
-        throw new Error(
-          'Brief could not be generated. Please try again.'
-        );
-      }
     }
-
-    // Step 6: attach metadata
-    builderResult.sourceAnalysisId = analysisId;
-    builderResult.promptVersion = BUILDER_PROMPT_VERSION;
-
-    // Step 7: save to database
-    await upsertBrief({
-      videoId: analysis.video_id as string,
-      analysisType: 'build',
-      llmProvider: process.env.BUILDER_LLM_PROVIDER ?? 'gemini',
-      llmModel: 'gemini-2.5-flash',
-      promptVersion: BUILDER_PROMPT_VERSION,
-      result: builderResult,
-      processingTimeMs,
-    });
-
-    return { result: builderResult, cached: false, processingTimeMs };
-  } finally {
-    // Always restore the original provider
-    process.env.LLM_PROVIDER = originalProvider;
   }
+
+  // Step 6: attach metadata
+  builderResult.sourceAnalysisId = analysisId;
+  builderResult.promptVersion = BUILDER_PROMPT_VERSION;
+
+  // Step 7: save to database
+  await upsertBrief({
+    videoId: analysis.video_id as string,
+    analysisType: 'build',
+    llmProvider: builderProvider,
+    llmModel: 'gemini-2.5-flash',
+    promptVersion: BUILDER_PROMPT_VERSION,
+    result: builderResult,
+    processingTimeMs,
+  });
+
+  return { result: builderResult, cached: false, processingTimeMs };
 }

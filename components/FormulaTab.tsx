@@ -34,7 +34,7 @@ export function FormulaTab({ formula }: { formula: PsychologicalFormula }) {
                 <Badge variant="outline" className="text-xs font-mono">{moment.timestamp}</Badge>
                 <span className="text-xs font-semibold text-gray-800">{moment.mechanism}</span>
               </div>
-              <p className="text-sm italic text-gray-600">"{moment.transcriptQuote}"</p>
+              <p className="text-sm italic text-gray-600">&ldquo;{moment.transcriptQuote}&rdquo;</p>
               <div className="flex flex-wrap gap-1">
                 {moment.dimensionsActivated.map((d, j) => (
                   <Badge key={j} variant="secondary" className="text-xs">{d}</Badge>

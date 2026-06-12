@@ -125,34 +125,55 @@ export async function insertVideoVelocitySnapshot(snapshot: VideoVelocitySnapsho
 }
 
 export async function upsertVideo(video: VideoData): Promise<string> {
-  const { data, error } = await supabaseAdmin
-    .from('videos')
-    .upsert({
-      youtube_video_id: video.youtubeVideoId,
-      channel_id: video.channelId,
-      title: video.title,
-      description: video.description,
-      url: video.url,
-      view_count: video.viewCount,
-      like_count: video.likeCount,
-      comment_count: video.commentCount,
-      duration_seconds: video.durationSeconds,
-      published_at: video.publishedAt,
-      thumbnail_url: video.thumbnailUrl,
-      tags: video.tags ?? [],
-      outlier_score: video.outlierScore,
-      outlier_category: video.outlierCategory,
-      has_transcript: video.hasTranscript ?? false,
-      has_analysis: video.hasAnalysis ?? false,
-    }, { onConflict: 'youtube_video_id' })
-    .select('id')
-    .single();
-  if (error) {
-    console.error('upsertVideo failed:', error);
-    throw new Error(`Failed to upsert video "${video.title}": ${error.message}`);
-  }
+  const payload: Record<string, unknown> = {
+    youtube_video_id: video.youtubeVideoId,
+    channel_id: video.channelId,
+    title: video.title,
+    description: video.description,
+    url: video.url,
+    view_count: video.viewCount,
+    like_count: video.likeCount,
+    comment_count: video.commentCount,
+    duration_seconds: video.durationSeconds,
+    published_at: video.publishedAt,
+    thumbnail_url: video.thumbnailUrl,
+    tags: video.tags ?? [],
+    outlier_score: video.outlierScore,
+    outlier_category: video.outlierCategory,
+  };
 
-  const videoId = data.id as string;
+  // Select-then-update/insert so re-scans never reset has_transcript /
+  // has_analysis on videos that were already decoded.
+  const { data: existing } = await supabaseAdmin
+    .from('videos')
+    .select('id')
+    .eq('youtube_video_id', video.youtubeVideoId)
+    .maybeSingle();
+
+  let videoId: string;
+  if (existing) {
+    videoId = existing.id as string;
+    const { error } = await supabaseAdmin.from('videos').update(payload).eq('id', videoId);
+    if (error) {
+      console.error('upsertVideo update failed:', error);
+      throw new Error(`Failed to update video "${video.title}": ${error.message}`);
+    }
+  } else {
+    const { data, error } = await supabaseAdmin
+      .from('videos')
+      .insert({
+        ...payload,
+        has_transcript: video.hasTranscript ?? false,
+        has_analysis: video.hasAnalysis ?? false,
+      })
+      .select('id')
+      .single();
+    if (error) {
+      console.error('upsertVideo insert failed:', error);
+      throw new Error(`Failed to insert video "${video.title}": ${error.message}`);
+    }
+    videoId = data.id as string;
+  }
   const scannedAt = new Date().toISOString();
 
   // Append-only snapshot — full history of every scan, never overwritten

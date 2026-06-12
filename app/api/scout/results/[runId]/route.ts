@@ -19,13 +19,18 @@ export async function GET(
     return NextResponse.json({ error: 'runId is required' }, { status: 400 });
   }
 
-  const run = await getPipelineRun(runId);
+  try {
+    const run = await getPipelineRun(runId);
 
-  if (!run) {
-    return NextResponse.json({ error: 'Run not found' }, { status: 404 });
+    if (!run) {
+      return NextResponse.json({ error: 'Run not found' }, { status: 404 });
+    }
+
+    const outliers = await getOutliersForRun(runId);
+
+    return NextResponse.json({ run, outliers });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+    return NextResponse.json({ error: message, code: 'INTERNAL_ERROR' }, { status: 500 });
   }
-
-  const outliers = await getOutliersForRun(runId);
-
-  return NextResponse.json({ run, outliers });
 }

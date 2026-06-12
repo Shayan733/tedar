@@ -12,15 +12,18 @@ export function stripJsonFences(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
 }
 
+export type LLMProvider = 'groq' | 'gemini' | 'claude' | 'openai';
+
 export async function generateLLMResponse(
   systemPrompt: string,
   userMessage: string,
   options?: {
     temperature?: number;
     maxTokens?: number;
+    provider?: LLMProvider;  // explicit override — avoids mutating process.env per call
   }
 ): Promise<LLMResponse> {
-  const provider = process.env.LLM_PROVIDER ?? 'gemini';
+  const provider = options?.provider ?? process.env.LLM_PROVIDER ?? 'gemini';
 
   switch (provider) {
     case 'groq':

@@ -263,6 +263,71 @@ export interface AnalysisRecord {
   createdAt?: string;
 }
 
+// ─── Phase 6: Consolidation — Audience Decoder, Library & History ────────────
+// Merged from DP-YT-PIPELINE: comment-based audience analysis, analysis run
+// history, library view with stats refresh, CSV/JSON export.
+
+export type AnalysisType = 'decode' | 'build' | 'audience';
+
+export interface CommentData {
+  text: string;
+  likeCount: number;
+  authorName?: string;
+  publishedAt?: string;
+  replyCount?: number;
+}
+
+export interface StandoutComment {
+  text: string;
+  likeCount: number;
+  insight: string;
+}
+
+export interface AudienceResult {
+  id?: string;                       // Supabase analysis UUID — set after saving
+  dominantSentiment: string;
+  emotionalTriggers: string[];
+  resonantThemes: string[];
+  audienceReactionPattern: string;
+  expectationGap: string;
+  whatWorked: string;
+  standoutComments: StandoutComment[];
+  commentsAnalysed: number;
+}
+
+export interface AnalysisRunSummary {
+  id: string;
+  analysisType: AnalysisType;
+  llmProvider: string;
+  llmModel: string;
+  overallScore: number | null;
+  createdAt: string;
+}
+
+export interface LibraryAnalysisInfo {
+  analysisId: string;
+  overallScore: number | null;
+  runCount: number;
+  lastRunAt: string;
+}
+
+export interface LibraryEntry {
+  videoId: string;                   // Supabase UUID
+  youtubeVideoId: string;
+  title: string;
+  channelName: string | null;
+  thumbnailUrl: string | null;
+  viewCount: number;
+  likeCount: number | null;
+  commentCount: number | null;
+  publishedAt: string | null;
+  addedAt: string | null;
+  hasTranscript: boolean;
+  decode: LibraryAnalysisInfo | null;
+  audience: LibraryAnalysisInfo | null;
+  hasBrief: boolean;
+}
+
 // ─── Phase 4: Builder Engine Types ────────────────────────────────────────────
 
 export interface CreatorContext {
