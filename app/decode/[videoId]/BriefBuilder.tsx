@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { BuilderCard } from '@/components/BuilderCard';
 import { BuilderResult } from '@/lib/types';
 import { readStream } from '@/lib/streaming';
@@ -74,12 +75,12 @@ export function BriefBuilder({ analysisId }: BriefBuilderProps) {
           >
             Build another brief
           </button>
-          <a
+          <Link
             href="/"
             className="text-sm text-violet-600 hover:text-violet-800 font-medium"
           >
             Decode another video →
-          </a>
+          </Link>
         </div>
       </div>
     );

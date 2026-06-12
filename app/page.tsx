@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { OutlierCard } from '@/components/OutlierCard';
+import { HomeHero } from '@/components/HomeHero';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -187,10 +188,14 @@ export default function Home() {
     <div className="min-h-screen bg-white">
       <div className="max-w-3xl mx-auto px-6 py-16 space-y-8">
 
-        <div className="text-center space-y-1">
-          <h1 className="text-4xl font-bold tracking-tight">TEDAR</h1>
-          <p className="text-sm text-gray-400 tracking-wide">See Deeper. See Further.</p>
-        </div>
+        {pageState === 'idle' ? (
+          <HomeHero />
+        ) : (
+          <div className="text-center space-y-1">
+            <h1 className="text-4xl font-bold tracking-tight">TEDAR</h1>
+            <p className="text-sm text-gray-400 tracking-wide">See Deeper. See Further.</p>
+          </div>
+        )}
 
         <div className="flex gap-2">
           <Input

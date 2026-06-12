@@ -79,6 +79,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         transcript: prepared.transcript,
         wordCount: prepared.wordCount,
         existingAnalysisId: prepared.existingAnalysisId,
+        existingAudienceId: prepared.existingAudienceId,
       },
       meta: {
         processingTimeMs: Date.now() - startTime,

@@ -6,11 +6,12 @@ import { prepareVideo, PrepareResult, DecodeProgressCallback } from './prepare';
 import { buildDecoderPrompt, DECODER_PROMPT_VERSION } from './prompts/k1-decoder';
 import { generateLLMResponse, stripJsonFences } from './llm/provider';
 import {
-  upsertAnalysis,
+  insertAnalysis,
   getAnalysisByVideoId,
   getVideoById,
   getTranscriptByVideoId,
 } from './supabase-decoder';
+import { countAnalysisRuns } from './supabase-history';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from './config';
 import { DecoderResult } from './types';
 
@@ -84,9 +85,14 @@ export async function analyseVideo(
   }
 
   emit('Validating analysis structure...');
-  emit('Saving to database...');
 
-  const analysisId = await upsertAnalysis({
+  // Every run is preserved — log which run number this is (DP-YT-PIPELINE V5)
+  const previousRuns = await countAnalysisRuns(videoId, 'decode');
+  emit(previousRuns > 0
+    ? `Saving to database — run #${previousRuns + 1} for this video, history preserved...`
+    : 'Saving to database...');
+
+  const analysisId = await insertAnalysis({
     videoId,
     analysisType: 'decode',
     llmProvider: process.env.LLM_PROVIDER ?? 'groq',

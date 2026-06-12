@@ -7,10 +7,21 @@ import { getBriefByAnalysisId } from '@/lib/supabase-builder';
 import { CreatorContext } from '@/lib/types';
 import { createStreamResponse } from '@/lib/streaming';
 
+export const maxDuration = 60; // Vercel function timeout for the Builder LLM call
+
+interface BuildBody {
+  analysisId?: unknown;
+  channelName?: unknown;
+  niche?: unknown;
+  typicalContentStyle?: unknown;
+  targetAudience?: unknown;
+  forceRefresh?: unknown;
+}
+
 export async function POST(request: NextRequest): Promise<Response> {
-  let body: Record<string, unknown>;
+  let body: BuildBody;
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    body = (await request.json()) as BuildBody;
   } catch {
     return NextResponse.json(
       { error: 'Invalid request body', code: 'INVALID_BODY' },
